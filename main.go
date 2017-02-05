@@ -14,6 +14,9 @@ import (
 
 	"io/ioutil"
 
+	"os/signal"
+	"syscall"
+
 	"github.com/joelanford/goscan/utils/ahocorasick"
 	"github.com/joelanford/goscan/utils/ramdisk"
 	"github.com/joelanford/goscan/utils/unar"
@@ -49,8 +52,26 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err := run(opts); err != nil {
+	rd := ramdisk.New("goscan", opts.RamdiskSize)
+	err := rd.Mount()
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	defer rd.Unmount()
+
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGABRT, syscall.SIGINT, syscall.SIGKILL)
+	go func() {
+		sig := <-sigChan
+		fmt.Fprintln(os.Stderr, "Received signal", sig)
+		rd.Unmount()
+		os.Exit(1)
+	}()
+
+	if err := run(opts, rd.MountPoint()); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		rd.Unmount()
 		os.Exit(1)
 	}
 }
@@ -59,7 +80,7 @@ func parseFlags() (Opts, []error) {
 	var errs []error
 	var opts Opts
 	flag.StringVar(&opts.DirtyWordsFile, "words", "", "YAML dirty words file")
-	flag.StringVar(&opts.DbFile, "db", ".files.sqlite", "Database to track previously seen files")
+	flag.StringVar(&opts.DbFile, "db", path.Join(os.Getenv("HOME"), "goscan.sqlite"), "Database to track previously seen files")
 	flag.IntVar(&opts.RamdiskSize, "ramdisk.size", 4096, "Size of ramdisk to use as scratch space")
 	flag.Parse()
 	opts.ScanFiles = flag.Args()
@@ -79,7 +100,7 @@ func parseFlags() (Opts, []error) {
 	return opts, errs
 }
 
-func run(opts Opts) error {
+func run(opts Opts, scratchSpacePath string) error {
 	dirtyWords, err := words.LoadFile(opts.DirtyWordsFile)
 	if err != nil {
 		return err
@@ -89,13 +110,6 @@ func run(opts Opts) error {
 	for _, w := range dirtyWords {
 		dictionary = append(dictionary, w.Word)
 	}
-
-	rd := ramdisk.New("goscan", opts.RamdiskSize)
-	err = rd.Mount()
-	if err != nil {
-		return err
-	}
-	defer rd.Unmount()
 
 	fileChan := make(chan string)
 	var wg sync.WaitGroup
@@ -121,7 +135,7 @@ func run(opts Opts) error {
 		if err != nil {
 			return err
 		}
-		ofilename := path.Join(rd.MountPoint(), path.Base(scanFile))
+		ofilename := path.Join(scratchSpacePath, path.Base(scanFile))
 		ofile, err := os.Create(ofilename)
 		if err != nil {
 			return err
@@ -175,7 +189,7 @@ func explode(fileChan chan<- string) filepath.WalkFunc {
 					if strings.HasSuffix(err.Error(), "Couldn't recognize the archive format.") {
 						return nil
 					}
-					fmt.Fprintf(os.Stderr, "error unarchiving file: %s\n", file)
+					fmt.Fprintf(os.Stderr, "error unarchiving file: %s: %s\n", file, err)
 					return nil
 				}
 				fileChan <- file
