@@ -1,36 +1,23 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"flag"
-	"io"
+	"io/ioutil"
 	"path"
-	"strings"
-	"sync"
 
 	"fmt"
 	"os"
 
-	"path/filepath"
-
-	"io/ioutil"
-
 	"os/signal"
 	"syscall"
 
-	"github.com/joelanford/goscan/utils/ahocorasick"
+	"github.com/joelanford/goscan/utils/filescanner"
 	"github.com/joelanford/goscan/utils/ramdisk"
-	"github.com/joelanford/goscan/utils/unar"
-	"github.com/joelanford/goscan/utils/words"
 	"github.com/pkg/errors"
 	"gopkg.in/h2non/filetype.v1"
 )
-
-type Opts struct {
-	ScanFiles      []string
-	RamdiskSize    int
-	DirtyWordsFile string
-	DbFile         string
-}
 
 var (
 	rpmType = filetype.AddType("rpm", "application/x-rpm")
@@ -42,200 +29,216 @@ func init() {
 	})
 }
 
-func main() {
-	opts, errs := parseFlags()
-	if len(errs) > 0 {
-		fmt.Fprintf(os.Stderr, "error(s) parsing flags:\n")
-		for _, err := range errs {
-			fmt.Fprintf(os.Stderr, "  - %s\n", err.Error())
+func exit(err error, code int, rd *ramdisk.Ramdisk) {
+	if rd != nil {
+		if err := rd.Unmount(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
 		}
-		os.Exit(1)
+	}
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(code)
+}
+
+func main() {
+	//
+	// Parse command line flags
+	//
+	scanOpts, ramdiskOpts, errs := parseFlags()
+	if len(errs) > 0 {
+		e := "error(s) parsing flags:\n"
+		for _, err := range errs {
+			e = fmt.Sprintf("%s  - %s\n", e, err.Error())
+		}
+		exit(errors.New(e), 1, nil)
 	}
 
-	rd := ramdisk.New("goscan", opts.RamdiskSize)
+	//
+	// Prepare the ramdisk
+	//
+	rd := ramdisk.New(ramdiskOpts)
 	err := rd.Mount()
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+		exit(err, 1, nil)
+
 	}
 	defer rd.Unmount()
 
+	//
+	// Setup context and signal handlers, which will be needed
+	// if we need to cleanly exit before completing the scan.
+	//
+	ctx, cancel := context.WithCancel(context.Background())
 	sigChan := make(chan os.Signal)
 	signal.Notify(sigChan, syscall.SIGABRT, syscall.SIGINT, syscall.SIGKILL)
 	go func() {
 		sig := <-sigChan
-		fmt.Fprintln(os.Stderr, "Received signal", sig)
-		rd.Unmount()
-		os.Exit(1)
+		fmt.Fprintf(os.Stderr, "Received signal %s. Exiting", sig)
+		cancel()
 	}()
 
-	if err := run(opts, rd.MountPoint()); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		rd.Unmount()
-		os.Exit(1)
+	//
+	// Setup the filescanner
+	//
+	scanOpts.ScratchSpacePath = rd.MountPoint()
+	fs, err := filescanner.New(scanOpts)
+	if err != nil {
+		exit(err, 1, rd)
 	}
+
+	//
+	// Run the scan
+	//
+	results, err := fs.Scan(ctx)
+	if err != nil {
+		exit(err, 1, rd)
+	}
+
+	//
+	// Output the hits
+	//
+	data, err := json.MarshalIndent(results, "", "    ")
+	ioutil.WriteFile(scanOpts.ResultsFile, data, 0644)
 }
 
-func parseFlags() (Opts, []error) {
+func parseFlags() (filescanner.Opts, ramdisk.Opts, []error) {
 	var errs []error
-	var opts Opts
-	flag.StringVar(&opts.DirtyWordsFile, "words", "", "YAML dirty words file")
-	flag.StringVar(&opts.DbFile, "db", path.Join(os.Getenv("HOME"), "goscan.sqlite"), "Database to track previously seen files")
-	flag.IntVar(&opts.RamdiskSize, "ramdisk.size", 4096, "Size of ramdisk to use as scratch space")
-	flag.Parse()
-	opts.ScanFiles = flag.Args()
 
-	if opts.DirtyWordsFile == "" {
+	var scanOpts filescanner.Opts
+	flag.StringVar(&scanOpts.DirtyWordsFile, "scan.words", "", "YAML dirty words file")
+	flag.StringVar(&scanOpts.DbFile, "scan.db", path.Join(os.Getenv("HOME"), "goscan.sqlite"), "Database to track previously seen files")
+	flag.StringVar(&scanOpts.ResultsFile, "scan.results", "-", "Results output file (\"-\" for stdout)")
+	if scanOpts.ResultsFile == "-" {
+		scanOpts.ResultsFile = "/dev/stdout"
+	}
+
+	var ramdiskOpts ramdisk.Opts
+	flag.StringVar(&ramdiskOpts.Name, "ramdisk.name", "goscan", "Disk label to use for ramdisk")
+	flag.StringVar(&ramdiskOpts.BaseDir, "ramdisk.basedir", "/tmp", "Base directory for ramdisk mountpoints")
+	flag.IntVar(&ramdiskOpts.Megabytes, "ramdisk.megabytes", 4096, "Size of ramdisk to use as scratch space")
+
+	flag.Parse()
+	scanOpts.ScanFiles = flag.Args()
+
+	if scanOpts.DirtyWordsFile == "" {
 		errs = append(errs, errors.New("words file not defined"))
 	}
 
-	if opts.DbFile == "" {
+	if scanOpts.DbFile == "" {
 		errs = append(errs, errors.New("db file not defined"))
 	}
 
-	if len(opts.ScanFiles) == 0 {
-		errs = append(errs, errors.New("scan paths not defined"))
+	if len(scanOpts.ScanFiles) == 0 {
+		errs = append(errs, errors.New("scan files not defined"))
 	}
 
-	return opts, errs
+	return scanOpts, ramdiskOpts, errs
 }
 
-func run(opts Opts, scratchSpacePath string) error {
-	dirtyWords, err := words.LoadFile(opts.DirtyWordsFile)
-	if err != nil {
-		return err
-	}
+// func run(ctx context.Context, opts filescanner.Opts, scratchSpacePath string) error {
+// 	dirtyWords, err := dirtywords.FromFile(opts.DirtyWordsFile)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	var dictionary []string
-	for _, w := range dirtyWords {
-		dictionary = append(dictionary, w.Word)
-	}
+// 	fileChan := make(chan string)
+// 	var wg sync.WaitGroup
+// 	wg.Add(16)
+// 	for i := 0; i < 16; i++ {
+// 		go func() {
+// 			defer wg.Done()
+// 			for {
+// 				select {
+// 				case <-ctx.Done():
+// 					return
+// 				case file, ok := <-fileChan:
+// 					if !ok {
+// 						return
+// 					}
+// 					hits, err := dirtyWords.MatchFile(file)
+// 					if err != nil {
+// 						fmt.Fprintln(os.Stderr, err)
+// 						return
+// 					}
+// 					for _, hit := range hits {
+// 						fmt.Println(hit)
+// 					}
+// 					os.Remove(file)
+// 				}
+// 			}
+// 		}()
+// 	}
+// 	for _, scanFile := range opts.ScanFiles {
+// 		ifile, err := os.Open(scanFile)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		ofilename := path.Join(scratchSpacePath, path.Base(scanFile))
+// 		ofile, err := os.Create(ofilename)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if _, err := io.Copy(ofile, ifile); err != nil {
+// 			return err
+// 		}
+// 		if err := filepath.Walk(ofilename, explode(fileChan)); err != nil {
+// 			return err
+// 		}
+// 	}
+// 	close(fileChan)
+// 	wg.Wait()
+// 	return nil
+// }
 
-	fileChan := make(chan string)
-	var wg sync.WaitGroup
-	wg.Add(16)
-	for i := 0; i < 16; i++ {
-		go func() {
-			defer wg.Done()
-			for file := range fileChan {
-				hits, err := searchFile(file, dictionary)
-				if err != nil {
-					fmt.Fprintln(os.Stderr, err)
-					return
-				}
-				for _, hit := range hits {
-					fmt.Println(hit)
-				}
-				os.Remove(file)
-			}
-		}()
-	}
-	for _, scanFile := range opts.ScanFiles {
-		ifile, err := os.Open(scanFile)
-		if err != nil {
-			return err
-		}
-		ofilename := path.Join(scratchSpacePath, path.Base(scanFile))
-		ofile, err := os.Create(ofilename)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(ofile, ifile); err != nil {
-			return err
-		}
-		if err := filepath.Walk(ofilename, explode(fileChan)); err != nil {
-			return err
-		}
-	}
-	close(fileChan)
-	wg.Wait()
-	return nil
-}
+// func explode(fileChan chan<- string) filepath.WalkFunc {
+// 	return func(file string, info os.FileInfo, err error) error {
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if info.Mode().IsRegular() && info.Size() > 0 {
+// 			k, err := filetype.MatchFile(file)
+// 			if err != nil {
+// 				return err
+// 			}
 
-func explode(fileChan chan<- string) filepath.WalkFunc {
-	return func(file string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() && info.Size() > 0 {
-			k, err := filetype.MatchFile(file)
-			if err != nil {
-				return err
-			}
-
-			if k.Extension == "zip" ||
-				k.Extension == "gz" ||
-				k.Extension == "xz" ||
-				k.Extension == "bz2" ||
-				k.Extension == "7z" ||
-				k.Extension == "tar" ||
-				k.Extension == "rar" ||
-				k.Extension == "rpm" ||
-				k.Extension == "deb" ||
-				k.Extension == "pdf" ||
-				k.Extension == "exe" ||
-				k.Extension == "rtf" ||
-				k.Extension == "ps" ||
-				k.Extension == "cab" ||
-				k.Extension == "ar" ||
-				k.Extension == "Z" ||
-				k.Extension == "lz" ||
-				strings.HasSuffix(file, ".cpio") ||
-				strings.HasSuffix(file, ".iso") ||
-				strings.HasSuffix(file, ".img") {
-				explodePath := file + ".unar"
-				if err := unar.Run(file, explodePath); err != nil {
-					fileChan <- file
-					if strings.HasSuffix(err.Error(), "Couldn't recognize the archive format.") {
-						return nil
-					}
-					fmt.Fprintf(os.Stderr, "error unarchiving file: %s: %s\n", file, err)
-					return nil
-				}
-				fileChan <- file
-				if _, err := os.Stat(explodePath); !os.IsNotExist(err) {
-					if err := filepath.Walk(explodePath, explode(fileChan)); err != nil {
-						return err
-					}
-				}
-			} else {
-				fileChan <- file
-			}
-		}
-		return nil
-	}
-}
-
-func searchFile(searchFile string, dirtyWords []string) ([]words.Hit, error) {
-	m := new(ahocorasick.Machine)
-	dict := [][]byte{}
-	for _, w := range dirtyWords {
-		dict = append(dict, []byte(w))
-	}
-	m.Build(dict)
-
-	data, err := ioutil.ReadFile(searchFile)
-	if err != nil {
-		return nil, err
-	}
-	terms := m.MultiPatternSearch(data, false)
-
-	hits := []words.Hit{}
-	for _, t := range terms {
-		ctxBegin := t.Pos - 20
-		ctxEnd := t.Pos + len(t.Word) + 20
-		if ctxBegin < 0 {
-			ctxBegin = 0
-		}
-		if ctxEnd > len(data) {
-			ctxEnd = len(data)
-		}
-		hits = append(hits, words.Hit{
-			Word:      string(t.Word),
-			File:      searchFile,
-			FileIndex: t.Pos,
-			Context:   string(data[ctxBegin:ctxEnd]),
-		})
-	}
-	return hits, nil
-}
+// 			if k.Extension == "zip" ||
+// 				k.Extension == "gz" ||
+// 				k.Extension == "xz" ||
+// 				k.Extension == "bz2" ||
+// 				k.Extension == "7z" ||
+// 				k.Extension == "tar" ||
+// 				k.Extension == "rar" ||
+// 				k.Extension == "rpm" ||
+// 				k.Extension == "deb" ||
+// 				k.Extension == "pdf" ||
+// 				k.Extension == "exe" ||
+// 				k.Extension == "rtf" ||
+// 				k.Extension == "ps" ||
+// 				k.Extension == "cab" ||
+// 				k.Extension == "ar" ||
+// 				k.Extension == "Z" ||
+// 				k.Extension == "lz" ||
+// 				strings.HasSuffix(file, ".cpio") ||
+// 				strings.HasSuffix(file, ".iso") ||
+// 				strings.HasSuffix(file, ".img") {
+// 				explodePath := file + ".unar"
+// 				if err := unar.Run(file, explodePath); err != nil {
+// 					fileChan <- file
+// 					if strings.HasSuffix(err.Error(), "Couldn't recognize the archive format.") {
+// 						return nil
+// 					}
+// 					fmt.Fprintf(os.Stderr, "error unarchiving file: %s: %s\n", file, err)
+// 					return nil
+// 				}
+// 				fileChan <- file
+// 				if _, err := os.Stat(explodePath); !os.IsNotExist(err) {
+// 					if err := filepath.Walk(explodePath, explode(fileChan)); err != nil {
+// 						return err
+// 					}
+// 				}
+// 			} else {
+// 				fileChan <- file
+// 			}
+// 		}
+// 		return nil
+// 	}
+// }

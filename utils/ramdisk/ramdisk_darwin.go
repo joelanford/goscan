@@ -6,57 +6,10 @@ import (
 
 	"io/ioutil"
 
-	"os"
-
 	"strings"
 
 	"github.com/pkg/errors"
 )
-
-type Ramdisk struct {
-	name       string
-	mountPoint string
-	megabytes  int
-
-	device string
-}
-
-func New(name string, megabytes int) *Ramdisk {
-	return &Ramdisk{
-		name:      name,
-		megabytes: megabytes,
-	}
-}
-
-func (r *Ramdisk) MountPoint() string {
-	return r.mountPoint
-}
-
-func (r *Ramdisk) Device() string {
-	return r.device
-}
-
-func (r *Ramdisk) Mount() error {
-	err := r.attach()
-	if err != nil {
-		return errors.Wrap(err, "error mounting ramdisk")
-	}
-	err = r.mount()
-	return nil
-}
-
-func (r *Ramdisk) Unmount() error {
-	err := r.detach()
-	if err != nil {
-		return errors.Wrap(err, "error unmounting ramdisk")
-	}
-	err = os.RemoveAll(r.mountPoint)
-	if err != nil {
-		return errors.Wrap(err, "error deleting temporary mountpoint")
-	}
-	r.mountPoint = ""
-	return nil
-}
 
 func (r *Ramdisk) attach() error {
 	output, err := exec.Command("hdiutil", "attach", "-nomount", fmt.Sprintf("ram://%d", r.megabytes*2048)).CombinedOutput()
@@ -71,7 +24,7 @@ func (r *Ramdisk) mount() error {
 	var output []byte
 	var err error
 
-	r.mountPoint, err = ioutil.TempDir("/tmp", "goscan-")
+	r.mountPoint, err = ioutil.TempDir(r.basedir, "goscan-")
 	if err != nil {
 		return errors.Wrapf(err, "error creating temporary directory for mount point")
 	}
