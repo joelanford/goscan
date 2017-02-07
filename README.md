@@ -33,7 +33,7 @@ A future release will relax the requirement for ramdisk and add support for othe
 ## Usage
 
 ```
-Usage of ./goscan:
+Usage: goscan [options] <scanfiles>
   -output string
     	Results output file ("-" for stdout) (default "-")
   -ramdisk.mb int

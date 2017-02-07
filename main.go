@@ -32,6 +32,11 @@ func init() {
 	filetype.AddMatcher(rpmType, func(header []byte) bool {
 		return len(header) >= 4 && header[0] == 0xED && header[1] == 0xAB && header[2] == 0xEE && header[3] == 0xDB
 	})
+
+	flag.Usage = func() {
+		fmt.Printf("Usage: goscan [options] <scanfiles>\n")
+		flag.PrintDefaults()
+	}
 }
 
 func exit(err error, code int, rd *ramdisk.Ramdisk) {
