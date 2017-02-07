@@ -7,25 +7,24 @@ import (
 )
 
 type Opts struct {
-	Name      string
-	BaseDir   string
-	Megabytes int
+	Name       string
+	MountPoint string
+	Megabytes  int
 }
 
 type Ramdisk struct {
-	name      string
-	basedir   string
-	megabytes int
-
+	name       string
 	mountPoint string
-	device     string
+	megabytes  int
+
+	device string
 }
 
 func New(opts Opts) *Ramdisk {
 	return &Ramdisk{
-		name:      opts.Name,
-		basedir:   opts.BaseDir,
-		megabytes: opts.Megabytes,
+		name:       opts.Name,
+		mountPoint: opts.MountPoint,
+		megabytes:  opts.Megabytes,
 	}
 }
 

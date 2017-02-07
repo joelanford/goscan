@@ -20,13 +20,6 @@ type Keyword struct {
 	Reason    string   `yaml:"reason"`
 }
 
-type Hit struct {
-	Word    string `json:"word"`
-	File    string `json:"file"`
-	Index   int    `json:"index"`
-	Context string `json:"context"`
-}
-
 func LoadDirtyWords(wordsFile string) (*DirtyWords, error) {
 	data, err := ioutil.ReadFile(wordsFile)
 	if err != nil {
@@ -56,7 +49,7 @@ func (d *DirtyWords) MatchFile(file string) ([]Hit, error) {
 		return nil, err
 	}
 
-	var hits []Hit
+	hits := make([]Hit, 0)
 	for _, t := range d.dictionary.MultiPatternSearch(data, false) {
 		ctxBegin := t.Pos - 20
 		ctxEnd := t.Pos + len(t.Word) + 20
@@ -68,7 +61,6 @@ func (d *DirtyWords) MatchFile(file string) ([]Hit, error) {
 		}
 		hits = append(hits, Hit{
 			Word:    string(t.Word),
-			File:    file,
 			Index:   t.Pos,
 			Context: string(data[ctxBegin:ctxEnd]),
 		})

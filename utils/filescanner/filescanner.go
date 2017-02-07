@@ -16,29 +16,33 @@ import (
 )
 
 type Opts struct {
-	ScanFiles        []string
 	DirtyWordsFile   string
-	DbFile           string
+	HitContext       int
 	ScratchSpacePath string
-	ResultsFile      string
 }
 
 type FileScanner struct {
 	keywords         *DirtyWords
-	scanFiles        []string
 	dbFile           string
 	scratchSpacePath string
+	hitContext       int
 }
 
 type WalkResult struct {
-	File  string
-	Error error
+	File  string `json:"file"`
+	Error error  `json:"error,omitempty"`
 }
 
 type ScanResult struct {
-	File  string
-	Hits  []Hit
-	Error error
+	File  string `json:"file"`
+	Hits  []Hit  `json:"hits"`
+	Error error  `json:"error,omitempty"`
+}
+
+type Hit struct {
+	Word    string `json:"word"`
+	Index   int    `json:"index"`
+	Context string `json:"context"`
 }
 
 func New(opts Opts) (*FileScanner, error) {
@@ -49,29 +53,32 @@ func New(opts Opts) (*FileScanner, error) {
 
 	return &FileScanner{
 		keywords:         dirtyWords,
-		scanFiles:        opts.ScanFiles,
-		dbFile:           opts.DbFile,
 		scratchSpacePath: opts.ScratchSpacePath,
+		hitContext:       opts.HitContext,
 	}, nil
 }
 
-func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
-	inFileChan := make(chan string, len(fs.scanFiles))
-	for _, file := range fs.scanFiles {
+func (fs *FileScanner) Scan(ctx context.Context, scanResultsChan chan<- ScanResult, scanFiles ...string) error {
+	if len(scanFiles) == 0 {
+		close(scanResultsChan)
+		return nil
+	}
+	inFileChan := make(chan string, len(scanFiles))
+	for _, file := range scanFiles {
 		//
 		// Copy the file to scan into the scratch space
 		//
 		ifile, err := os.Open(file)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		ofilename := path.Join(fs.scratchSpacePath, path.Base(file))
 		ofile, err := os.Create(ofilename)
 		if err != nil {
-			return nil, err
+			return err
 		}
 		if _, err := io.Copy(ofile, ifile); err != nil {
-			return nil, err
+			return err
 		}
 
 		inFileChan <- ofilename
@@ -79,6 +86,7 @@ func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
 	close(inFileChan)
 
 	walkResultsChan := make(chan WalkResult)
+	walkStarted := make(chan struct{})
 	var walkWg sync.WaitGroup
 	go func() {
 		for {
@@ -100,6 +108,7 @@ func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
 				// files on the fileChan channel to be scanned.
 				//
 				walkWg.Add(1)
+				close(walkStarted)
 				go func() {
 					if err := filepath.Walk(scanFile, fs.explodeFiles(ctx, &walkWg, walkResultsChan)); err != nil {
 						walkResultsChan <- WalkResult{Error: err}
@@ -111,11 +120,11 @@ func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
 	}()
 
 	go func() {
+		<-walkStarted
 		walkWg.Wait()
 		close(walkResultsChan)
 	}()
 
-	scanResultsChan := make(chan ScanResult)
 	var scanWg sync.WaitGroup
 	scanWg.Add(16)
 	for i := 0; i < 16; i++ {
@@ -126,7 +135,7 @@ func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
 					scanResultsChan <- ScanResult{Error: wr.Error}
 				} else {
 					var sr ScanResult
-					sr.File = wr.File
+					sr.File = strings.Replace(strings.Replace(wr.File, ".goscan-unar", "", -1), fs.scratchSpacePath+"/", "", -1)
 					sr.Hits, sr.Error = fs.keywords.MatchFile(wr.File)
 					scanResultsChan <- sr
 					os.Remove(wr.File)
@@ -139,16 +148,7 @@ func (fs *FileScanner) Scan(ctx context.Context) ([]ScanResult, error) {
 		scanWg.Wait()
 		close(scanResultsChan)
 	}()
-
-	var scanResults []ScanResult
-	for sr := range scanResultsChan {
-		if sr.Error != nil {
-			return nil, sr.Error
-		}
-		scanResults = append(scanResults, sr)
-	}
-
-	return scanResults, nil
+	return nil
 }
 
 func (fs *FileScanner) explodeFiles(ctx context.Context, walkWg *sync.WaitGroup, walkResultsChan chan<- WalkResult) filepath.WalkFunc {
@@ -192,7 +192,7 @@ func (fs *FileScanner) explodeFiles(ctx context.Context, walkWg *sync.WaitGroup,
 			strings.HasSuffix(file, ".iso") ||
 			strings.HasSuffix(file, ".img") {
 
-			explodePath := file + ".unar"
+			explodePath := file + ".goscan-unar"
 			unar.Run(file, explodePath)
 			walkResultsChan <- WalkResult{File: file}
 			if _, err := os.Stat(explodePath); !os.IsNotExist(err) {
@@ -207,7 +207,6 @@ func (fs *FileScanner) explodeFiles(ctx context.Context, walkWg *sync.WaitGroup,
 		} else {
 			walkResultsChan <- WalkResult{File: file}
 		}
-
 		return nil
 	}
 }

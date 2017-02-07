@@ -2,9 +2,8 @@ package ramdisk
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
-
-	"io/ioutil"
 
 	"strings"
 
@@ -24,7 +23,7 @@ func (r *Ramdisk) mount() error {
 	var output []byte
 	var err error
 
-	r.mountPoint, err = ioutil.TempDir(r.basedir, "goscan-")
+	err = os.Mkdir(r.mountPoint, 0777)
 	if err != nil {
 		return errors.Wrapf(err, "error creating temporary directory for mount point")
 	}
