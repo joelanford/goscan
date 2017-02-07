@@ -121,7 +121,7 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 	var fileOpts FileOpts
 
 	parseScratchOpts(&scratchOpts)
-	flag.StringVar(&scanOpts.DirtyWordsFile, "scan.words", "", "YAML dirty words file")
+	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
 	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
 	flag.StringVar(&fileOpts.ResultsFile, "output", "-", "Results output file (\"-\" for stdout)")
 
@@ -139,7 +139,7 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 
 	fileOpts.ScanFiles = flag.Args()
 
-	if scanOpts.DirtyWordsFile == "" {
+	if scanOpts.KeywordsFile == "" {
 		return nil, nil, nil, errors.New("error: scan.words file must be defined")
 	}
 

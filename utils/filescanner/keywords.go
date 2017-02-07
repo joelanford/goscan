@@ -8,7 +8,7 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-type DirtyWords struct {
+type Keywords struct {
 	Keywords []Keyword `yaml:"keywords"`
 
 	dictionary *ahocorasick.Machine
@@ -20,37 +20,37 @@ type Keyword struct {
 	Reason    string   `yaml:"reason"`
 }
 
-func LoadDirtyWords(wordsFile string) (*DirtyWords, error) {
+func LoadKeywords(wordsFile string) (*Keywords, error) {
 	data, err := ioutil.ReadFile(wordsFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading dirty words file")
+		return nil, errors.Wrap(err, "error reading keywords file")
 	}
 
-	var dirtyWords DirtyWords
-	err = yaml.Unmarshal(data, &dirtyWords)
+	var keywords Keywords
+	err = yaml.Unmarshal(data, &keywords)
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing dirty words file")
+		return nil, errors.Wrap(err, "error parsing keywords file")
 	}
 
-	var keywords [][]byte
-	for _, keyword := range dirtyWords.Keywords {
-		keywords = append(keywords, []byte(keyword.Word))
+	var keywordsBytes [][]byte
+	for _, keyword := range keywords.Keywords {
+		keywordsBytes = append(keywordsBytes, []byte(keyword.Word))
 	}
 
-	dirtyWords.dictionary = &ahocorasick.Machine{}
-	dirtyWords.dictionary.Build(keywords)
+	keywords.dictionary = &ahocorasick.Machine{}
+	keywords.dictionary.Build(keywordsBytes)
 
-	return &dirtyWords, nil
+	return &keywords, nil
 }
 
-func (d *DirtyWords) MatchFile(file string) ([]Hit, error) {
+func (k *Keywords) MatchFile(file string) ([]Hit, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
 	}
 
 	hits := make([]Hit, 0)
-	for _, t := range d.dictionary.MultiPatternSearch(data, false) {
+	for _, t := range k.dictionary.MultiPatternSearch(data, false) {
 		ctxBegin := t.Pos - 20
 		ctxEnd := t.Pos + len(t.Word) + 20
 		if ctxBegin < 0 {

@@ -16,13 +16,13 @@ import (
 )
 
 type Opts struct {
-	DirtyWordsFile   string
+	KeywordsFile     string
 	HitContext       int
 	ScratchSpacePath string
 }
 
 type FileScanner struct {
-	keywords         *DirtyWords
+	keywords         *Keywords
 	dbFile           string
 	scratchSpacePath string
 	hitContext       int
@@ -46,13 +46,13 @@ type Hit struct {
 }
 
 func New(opts Opts) (*FileScanner, error) {
-	dirtyWords, err := LoadDirtyWords(opts.DirtyWordsFile)
+	keywords, err := LoadKeywords(opts.KeywordsFile)
 	if err != nil {
-		return nil, errors.Wrap(err, "error loading dirty words")
+		return nil, errors.Wrap(err, "error loading keywords")
 	}
 
 	return &FileScanner{
-		keywords:         dirtyWords,
+		keywords:         keywords,
 		scratchSpacePath: opts.ScratchSpacePath,
 		hitContext:       opts.HitContext,
 	}, nil

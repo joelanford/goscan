@@ -46,7 +46,7 @@ Usage: goscan [options] <scanfiles>
   -scan.context int
     	Context to capture around each hit (default 10)
   -scan.words string
-    	YAML dirty words file
+    	YAML keywords file
   -scratch.dir string
     	Scratch directory for scan unarchiving
   -scratch.ramdisk.enable
