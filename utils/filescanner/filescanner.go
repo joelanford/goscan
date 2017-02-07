@@ -45,6 +45,13 @@ type Hit struct {
 	Context string `json:"context"`
 }
 
+func init() {
+	rpmType := filetype.AddType("rpm", "application/x-rpm")
+	filetype.AddMatcher(rpmType, func(header []byte) bool {
+		return len(header) >= 4 && header[0] == 0xED && header[1] == 0xAB && header[2] == 0xEE && header[3] == 0xDB
+	})
+}
+
 func New(opts Opts) (*FileScanner, error) {
 	keywords, err := LoadKeywords(opts.KeywordsFile)
 	if err != nil {

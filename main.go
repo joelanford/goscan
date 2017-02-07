@@ -15,32 +15,11 @@ import (
 	"github.com/joelanford/goscan/utils/filescanner"
 	"github.com/joelanford/goscan/utils/scratch"
 	"github.com/pkg/errors"
-	"gopkg.in/h2non/filetype.v1"
 )
 
 type FileOpts struct {
 	ScanFiles   []string
 	ResultsFile string
-}
-
-var (
-	rpmType = filetype.AddType("rpm", "application/x-rpm")
-)
-
-func init() {
-	filetype.AddMatcher(rpmType, func(header []byte) bool {
-		return len(header) >= 4 && header[0] == 0xED && header[1] == 0xAB && header[2] == 0xEE && header[3] == 0xDB
-	})
-}
-
-func exit(err error, code int, ss *scratch.Scratch) {
-	if ss != nil {
-		if err := ss.Teardown(); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-		}
-	}
-	fmt.Fprintln(os.Stderr, err)
-	os.Exit(code)
 }
 
 func main() {
@@ -146,4 +125,14 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 		return nil, nil, nil, errors.New("error: scan files not defined")
 	}
 	return &scratchOpts, &scanOpts, &fileOpts, nil
+}
+
+func exit(err error, code int, ss *scratch.Scratch) {
+	if ss != nil {
+		if err := ss.Teardown(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+		}
+	}
+	fmt.Fprintln(os.Stderr, err)
+	os.Exit(code)
 }
