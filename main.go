@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"math/rand"
-	"path"
 
 	"fmt"
 	"os"
@@ -14,7 +13,7 @@ import (
 	"syscall"
 
 	"github.com/joelanford/goscan/utils/filescanner"
-	"github.com/joelanford/goscan/utils/ramdisk"
+	"github.com/joelanford/goscan/utils/scratch"
 	"github.com/pkg/errors"
 	"gopkg.in/h2non/filetype.v1"
 )
@@ -32,16 +31,11 @@ func init() {
 	filetype.AddMatcher(rpmType, func(header []byte) bool {
 		return len(header) >= 4 && header[0] == 0xED && header[1] == 0xAB && header[2] == 0xEE && header[3] == 0xDB
 	})
-
-	flag.Usage = func() {
-		fmt.Printf("Usage: goscan [options] <scanfiles>\n")
-		flag.PrintDefaults()
-	}
 }
 
-func exit(err error, code int, rd *ramdisk.Ramdisk) {
-	if rd != nil {
-		if err := rd.Unmount(); err != nil {
+func exit(err error, code int, ss *scratch.Scratch) {
+	if ss != nil {
+		if err := ss.Teardown(); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 		}
 	}
@@ -53,25 +47,22 @@ func main() {
 	//
 	// Parse command line flags
 	//
-	scanOpts, fileOpts, ramdiskOpts, errs := parseFlags()
-	if len(errs) > 0 {
-		e := "error(s) parsing flags:\n"
-		for _, err := range errs {
-			e = fmt.Sprintf("%s  - %s\n", e, err.Error())
-		}
-		exit(errors.New(e), 1, nil)
+	scratchOpts, scanOpts, fileOpts, err := parseFlags()
+	if err != nil {
+		exit(err, 1, nil)
 	}
 
 	//
-	// Prepare the ramdisk
+	// Prepare the scratch space
 	//
-	rd := ramdisk.New(ramdiskOpts)
-	err := rd.Mount()
+	fmt.Printf("%+v\n", scratchOpts)
+	ss := scratch.New(*scratchOpts)
+	err = ss.Setup()
 	if err != nil {
 		exit(err, 1, nil)
 
 	}
-	defer rd.Unmount()
+	defer ss.Teardown()
 
 	//
 	// Setup context and signal handlers, which will be needed
@@ -89,9 +80,9 @@ func main() {
 	//
 	// Setup the filescanner
 	//
-	fs, err := filescanner.New(scanOpts)
+	fs, err := filescanner.New(*scanOpts)
 	if err != nil {
-		exit(err, 1, rd)
+		exit(err, 1, ss)
 	}
 
 	//
@@ -100,7 +91,7 @@ func main() {
 	resChan := make(chan filescanner.ScanResult)
 	err = fs.Scan(ctx, resChan, fileOpts.ScanFiles...)
 	if err != nil {
-		exit(err, 1, rd)
+		exit(err, 1, ss)
 	}
 
 	//
@@ -108,48 +99,52 @@ func main() {
 	//
 	output, err := os.Create(fileOpts.ResultsFile)
 	if err != nil {
-		exit(err, 1, rd)
+		exit(err, 1, ss)
 	}
 	e := json.NewEncoder(output)
 	for result := range resChan {
 		err := e.Encode(result)
 		if err != nil {
-			exit(err, 1, rd)
+			exit(err, 1, ss)
 		}
 	}
 }
 
-func parseFlags() (filescanner.Opts, FileOpts, ramdisk.Opts, []error) {
-	var errs []error
-
-	var scanOpts filescanner.Opts
-	flag.StringVar(&scanOpts.DirtyWordsFile, "scan.words", "", "YAML dirty words file")
-	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
-	flag.StringVar(&scanOpts.ScratchSpacePath, "scan.scratch.dir", "", "Scratch directory for scan unarchiving")
-	if scanOpts.ScratchSpacePath == "" {
-		scanOpts.ScratchSpacePath = fmt.Sprintf("/tmp/goscan-%d", rand.Int())
+func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
+	flag.Usage = func() {
+		fmt.Printf("Usage: goscan [options] <scanfiles>\n")
+		flag.PrintDefaults()
 	}
 
-	var ramdiskOpts ramdisk.Opts
-	flag.IntVar(&ramdiskOpts.Megabytes, "ramdisk.mb", 4096, "Size of ramdisk to use as scratch space")
-	ramdiskOpts.Name = path.Base(scanOpts.ScratchSpacePath)
-	ramdiskOpts.MountPoint = scanOpts.ScratchSpacePath
-
+	var scratchOpts scratch.Opts
+	var scanOpts filescanner.Opts
 	var fileOpts FileOpts
+
+	parseScratchOpts(&scratchOpts)
+	flag.StringVar(&scanOpts.DirtyWordsFile, "scan.words", "", "YAML dirty words file")
+	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
 	flag.StringVar(&fileOpts.ResultsFile, "output", "-", "Results output file (\"-\" for stdout)")
+
+	flag.Parse()
+
+	if scratchOpts.Path == "" {
+		scratchOpts.Path = fmt.Sprintf("/tmp/goscan-%d", rand.Int())
+	}
+
+	scanOpts.ScratchSpacePath = scratchOpts.Path
+
 	if fileOpts.ResultsFile == "-" {
 		fileOpts.ResultsFile = "/dev/stdout"
 	}
 
-	flag.Parse()
 	fileOpts.ScanFiles = flag.Args()
 
 	if scanOpts.DirtyWordsFile == "" {
-		errs = append(errs, errors.New("words file not defined"))
+		return nil, nil, nil, errors.New("error: scan.words file must be defined")
 	}
 
 	if len(fileOpts.ScanFiles) == 0 {
-		errs = append(errs, errors.New("scan files not defined"))
+		return nil, nil, nil, errors.New("error: scan files not defined")
 	}
-	return scanOpts, fileOpts, ramdiskOpts, errs
+	return &scratchOpts, &scanOpts, &fileOpts, nil
 }

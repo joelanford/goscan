@@ -63,6 +63,7 @@ func (fs *FileScanner) Scan(ctx context.Context, scanResultsChan chan<- ScanResu
 		close(scanResultsChan)
 		return nil
 	}
+
 	inFileChan := make(chan string, len(scanFiles))
 	for _, file := range scanFiles {
 		//
