@@ -34,16 +34,14 @@ A future release will relax the requirement for ramdisk and add support for othe
 
 ```
 Usage of ./goscan:
-  -ramdisk.basedir string
-    	Base directory for ramdisk mountpoints (default "/tmp")
-  -ramdisk.megabytes int
-    	Size of ramdisk to use as scratch space (default 4096)
-  -ramdisk.name string
-    	Disk label to use for ramdisk (default "goscan")
-  -scan.db string
-    	Database to track previously seen files (default "/Users/joe/goscan.sqlite")
-  -scan.results string
+  -output string
     	Results output file ("-" for stdout) (default "-")
+  -ramdisk.mb int
+    	Size of ramdisk to use as scratch space (default 4096)
+  -scan.context int
+    	Context to capture around each hit (default 10)
+  -scan.scratch.dir string
+    	Scratch directory for scan unarchiving
   -scan.words string
     	YAML dirty words file
 ```
