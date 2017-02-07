@@ -55,7 +55,6 @@ func main() {
 	//
 	// Prepare the scratch space
 	//
-	fmt.Printf("%+v\n", scratchOpts)
 	ss := scratch.New(*scratchOpts)
 	err = ss.Setup()
 	if err != nil {
