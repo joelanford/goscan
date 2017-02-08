@@ -45,6 +45,8 @@ Usage: goscan [options] <scanfiles>
     	Results output file ("-" for stdout) (default "-")
   -scan.context int
     	Context to capture around each hit (default 10)
+  -scan.policies string
+    	Comma-separated list of keyword policies (default "all")
   -scan.words string
     	YAML keywords file
   -scratch.dir string
