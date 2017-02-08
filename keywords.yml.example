@@ -1,0 +1,77 @@
+- word: espn
+  policies:
+    work: "ESPN is not work-related"
+    sports: "ESPN is a sports network"
+
+- word: Espn
+  policies:
+    work: "ESPN is not work-related"
+    sports: "ESPN is a sports network"
+
+- word: ESPN
+  policies:
+    work: "ESPN is not work-related"
+    sports: "ESPN is a sports network"
+
+- word: facebook
+  policies:
+    work: "Facebook is not work-related"
+
+- word: Facebook
+  policies:
+    work: "Facebook is not work-related"
+
+- word: youtube
+  policies:
+    work: "YouTube is not work-related"
+    streaming: "Streaming prohibited by network policy"
+
+- word: YouTube
+  policies:
+    work: "YouTube is not work-related"
+    streaming: "Streaming prohibited by network policy"
+
+- word: Youtube
+  policies:
+    work: "Youtube is not work-related"
+    streaming: "Streaming prohibited by network policy"
+
+- word: instagram
+  policies:
+    work: "Instagram is not work-related"
+
+- word: Instagram
+  policies:
+    work: "Instagram is not work-related"
+
+- word: snapchat
+  policies:
+    work: "Snapchat is not work-related"
+
+- word: Snapchat
+  policies:
+    work: "Snapchat is not work-related"
+
+- word: reddit
+  policies:
+    work: "Reddit is not work-related"
+
+- word: Reddit
+  policies:
+    work: "Reddit is not work-related"
+
+- word: spotify
+  policies:
+    streaming: "Streaming prohibited by network policy"
+
+- word: Spotify
+  policies:
+    streaming: "Streaming prohibited by network policy"
+
+- word: basketball
+  policies:
+    sports: "Sports-related term"
+
+- word: Basketball
+  policies:
+    sports: "Sports-related term"
