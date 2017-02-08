@@ -2,7 +2,6 @@ package scratch
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 	"path"
 
@@ -24,17 +23,12 @@ func (s *Scratch) mount() error {
 	var output []byte
 	var err error
 
-	err = os.Mkdir(s.path, 0777)
-	if err != nil {
-		return errors.Wrapf(err, "error creating temporary directory for mount point")
-	}
-
-	output, err = exec.Command("newfs_hfs", "-v", path.Base(s.path), s.device).CombinedOutput()
+	output, err = exec.Command("newfs_hfs", "-v", path.Base(s.ScratchSpacePath), s.device).CombinedOutput()
 	if err != nil {
 		return errors.Wrapf(err, "error creating hfs filesystem for ramdisk: "+string(output))
 	}
 
-	output, err = exec.Command("mount", "-o", "noatime", "-t", "hfs", s.device, s.path).CombinedOutput()
+	output, err = exec.Command("mount", "-o", "noatime", "-t", "hfs", s.device, s.ScratchSpacePath).CombinedOutput()
 	if err != nil {
 		return errors.Wrapf(err, "error creating temporary directory for mount point:"+string(output))
 	}
