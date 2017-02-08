@@ -18,6 +18,7 @@ import (
 type Opts struct {
 	KeywordsFile     string
 	HitContext       int
+	Policies         []string
 	ScratchSpacePath string
 }
 
@@ -40,9 +41,10 @@ type ScanResult struct {
 }
 
 type Hit struct {
-	Word    string `json:"word"`
-	Index   int    `json:"index"`
-	Context string `json:"context"`
+	Word     string            `json:"word"`
+	Index    int               `json:"index"`
+	Context  string            `json:"context"`
+	Policies map[string]string `json:"policies,omitempty"`
 }
 
 func init() {
@@ -53,7 +55,7 @@ func init() {
 }
 
 func New(opts Opts) (*FileScanner, error) {
-	keywords, err := LoadKeywords(opts.KeywordsFile)
+	keywords, err := LoadKeywords(opts.KeywordsFile, opts.Policies)
 	if err != nil {
 		return nil, errors.Wrap(err, "error loading keywords")
 	}

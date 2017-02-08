@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
+	"strings"
 	"io/ioutil"
 
 	"fmt"
@@ -96,12 +97,14 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 
 	var scratchOpts scratch.Opts
 	var scanOpts filescanner.Opts
+	var scanPolicies string
 	var fileOpts FileOpts
 	var err error
 
 	parseScratchOpts(&scratchOpts)
 	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
 	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
+	flag.StringVar(&scanPolicies, "scan.policies", "all", "Comma-separated list of keyword policies")
 	flag.StringVar(&fileOpts.ResultsFile, "output", "-", "Results output file (\"-\" for stdout)")
 
 	flag.Parse()
@@ -112,6 +115,11 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 	}
 
 	scanOpts.ScratchSpacePath = scratchOpts.Path
+	if scanPolicies == "all" {
+		scanOpts.Policies = nil
+	} else {
+		scanOpts.Policies = strings.Split(scanPolicies, ",")
+	}
 
 	if fileOpts.ResultsFile == "-" {
 		fileOpts.ResultsFile = "/dev/stdout"
