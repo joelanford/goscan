@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"flag"
 	"strings"
-	"io/ioutil"
 
 	"fmt"
 	"os"
@@ -42,6 +41,8 @@ func main() {
 
 	}
 	defer ss.Teardown()
+	// Now that we should have a Scratch TempDir, we can set the filescanner path
+	scanOpts.ScratchSpacePath = ss.ScratchSpacePath
 
 	//
 	// Setup context and signal handlers, which will be needed
@@ -99,7 +100,6 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 	var scanOpts filescanner.Opts
 	var scanPolicies string
 	var fileOpts FileOpts
-	var err error
 
 	parseScratchOpts(&scratchOpts)
 	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
@@ -109,12 +109,6 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 
 	flag.Parse()
 
-	scratchOpts.Path, err = ioutil.TempDir(scratchOpts.Path, "goscan")
-	if err != nil {
-		return nil, nil, nil, err
-	}
-
-	scanOpts.ScratchSpacePath = scratchOpts.Path
 	if scanPolicies == "all" {
 		scanOpts.Policies = nil
 	} else {

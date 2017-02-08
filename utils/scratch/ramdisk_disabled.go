@@ -2,14 +2,14 @@
 
 package scratch
 
-func (r *Ramdisk) attach() error {
+func (s *Scratch) attach() error {
 	panic("ramdisk not supported")
 }
 
-func (r *Ramdisk) mount() error {
+func (s *Scratch) mount() error {
 	panic("ramdisk not supported")
 }
 
-func (r *Ramdisk) detach() error {
+func (s *Scratch) detach() error {
 	panic("ramdisk not supported")
 }
