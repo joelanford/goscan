@@ -4,16 +4,18 @@ import (
 	"os"
 
 	"github.com/pkg/errors"
+	"io/ioutil"
 )
 
 type Opts struct {
-	Path             string
+	BasePath         string
 	RamdiskEnable    bool
 	RamdiskMegabytes int
 }
 
 type Scratch struct {
-	path             string
+	ScratchSpacePath string
+	basePath         string
 	ramdiskMegabytes int
 	ramdiskEnable    bool
 
@@ -22,13 +24,18 @@ type Scratch struct {
 
 func New(opts Opts) *Scratch {
 	return &Scratch{
-		path:             opts.Path,
+		basePath:         opts.BasePath,
 		ramdiskEnable:    opts.RamdiskEnable,
 		ramdiskMegabytes: opts.RamdiskMegabytes,
 	}
 }
 
 func (s *Scratch) Setup() error {
+	var err error
+	s.ScratchSpacePath, err = ioutil.TempDir(s.basePath, "goscan")
+	if err != nil {
+		return err
+	}
 	if s.ramdiskEnable {
 		err := s.attach()
 		if err != nil {
@@ -37,13 +44,6 @@ func (s *Scratch) Setup() error {
 		err = s.mount()
 		if err != nil {
 			return errors.Wrap(err, "error mounting ramdisk")
-		}
-	} else {
-		if _, err := os.Stat(s.path); os.IsNotExist(err) {
-			err = os.Mkdir(s.path, 0777)
-			if err != nil {
-				return errors.Wrap(err, "error creating temporary directory")
-			}
 		}
 	}
 	return nil
@@ -56,7 +56,7 @@ func (s *Scratch) Teardown() error {
 			return errors.Wrap(err, "error unmounting ramdisk")
 		}
 	}
-	err := os.RemoveAll(s.path)
+	err := os.RemoveAll(s.ScratchSpacePath)
 	if err != nil {
 		return errors.Wrap(err, "error deleting temporary directory")
 	}

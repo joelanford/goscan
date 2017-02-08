@@ -9,7 +9,7 @@ import (
 )
 
 func parseScratchOpts(opts *scratch.Opts) {
-	flag.StringVar(&opts.Path, "scratch.dir", "", "Scratch directory for scan unarchiving")
+	flag.StringVar(&opts.BasePath, "scratch.basedir", "", "Scratch directory for scan unarchiving")
 	flag.BoolVar(&opts.RamdiskEnable, "scratch.ramdisk.enable", false, "Enable ramdisk scratch directory")
 	flag.IntVar(&opts.RamdiskMegabytes, "scratch.ramdisk.mb", 4096, "Size of ramdisk to use as scratch space")
 }
