@@ -80,6 +80,7 @@ func main() {
 	if err != nil {
 		exit(err, 1, ss)
 	}
+	defer output.Close()
 	e := json.NewEncoder(output)
 	for result := range resChan {
 		err := e.Encode(result)

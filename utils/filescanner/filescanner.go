@@ -73,27 +73,15 @@ func (fs *FileScanner) Scan(ctx context.Context, scanResultsChan chan<- ScanResu
 		return nil
 	}
 
-	inFileChan := make(chan string, len(scanFiles))
-	for _, file := range scanFiles {
-		//
-		// Copy the file to scan into the scratch space
-		//
-		ifile, err := os.Open(file)
-		if err != nil {
+	scanFileChan := make(chan string, len(scanFiles))
+	for _, ifile := range scanFiles {
+		ofile := path.Join(fs.scratchSpacePath, path.Base(ifile))
+		if err := fs.copyToScratchSpace(ifile, ofile); err != nil {
 			return err
 		}
-		ofilename := path.Join(fs.scratchSpacePath, path.Base(file))
-		ofile, err := os.Create(ofilename)
-		if err != nil {
-			return err
-		}
-		if _, err := io.Copy(ofile, ifile); err != nil {
-			return err
-		}
-
-		inFileChan <- ofilename
+		scanFileChan <- ofile
 	}
-	close(inFileChan)
+	close(scanFileChan)
 
 	walkResultsChan := make(chan WalkResult)
 	walkStarted := make(chan struct{})
@@ -104,7 +92,7 @@ func (fs *FileScanner) Scan(ctx context.Context, scanResultsChan chan<- ScanResu
 			case <-ctx.Done():
 				walkResultsChan <- WalkResult{Error: ctx.Err()}
 				return
-			case scanFile, ok := <-inFileChan:
+			case scanFile, ok := <-scanFileChan:
 				//
 				// If the channel is closed, there's nothing left to scan.
 				// So we'll return the hits.
@@ -219,4 +207,21 @@ func (fs *FileScanner) explodeFiles(ctx context.Context, walkWg *sync.WaitGroup,
 		}
 		return nil
 	}
+}
+
+func (fs *FileScanner) copyToScratchSpace(ifilename, ofilename string) error {
+	ifile, err := os.Open(ifilename)
+	if err != nil {
+		return err
+	}
+	defer ifile.Close()
+	ofile, err := os.Create(ofilename)
+	if err != nil {
+		return err
+	}
+	defer ofile.Close()
+	if _, err := io.Copy(ofile, ifile); err != nil {
+		return err
+	}
+	return nil
 }
