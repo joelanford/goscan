@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"math/rand"
+	"io/ioutil"
 
 	"fmt"
 	"os"
@@ -97,6 +97,7 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 	var scratchOpts scratch.Opts
 	var scanOpts filescanner.Opts
 	var fileOpts FileOpts
+	var err error
 
 	parseScratchOpts(&scratchOpts)
 	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
@@ -105,8 +106,9 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 
 	flag.Parse()
 
-	if scratchOpts.Path == "" {
-		scratchOpts.Path = fmt.Sprintf("/tmp/goscan-%d", rand.Int())
+	scratchOpts.Path, err = ioutil.TempDir(scratchOpts.Path, "goscan")
+	if err != nil {
+		return nil, nil, nil, err
 	}
 
 	scanOpts.ScratchSpacePath = scratchOpts.Path
