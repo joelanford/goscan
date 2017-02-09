@@ -8,7 +8,7 @@ import (
 	"github.com/joelanford/goscan/utils/scratch"
 )
 
-func parseScratchOpts(opts *scratch.Opts) {
+func configureScratchOpts(opts *scratch.Opts) {
 	flag.StringVar(&opts.BasePath, "scratch.basedir", "", "Scratch directory for scan unarchiving")
 	opts.RamdiskEnable = false
 }

@@ -1,4 +1,4 @@
-package filescanner
+package keywords
 
 import (
 	"io/ioutil"
@@ -19,7 +19,14 @@ type Keyword struct {
 	Policies map[string]string `yaml:"policies"`
 }
 
-func LoadKeywords(wordsFile string, filterPolicies []string) (*Keywords, error) {
+type Hit struct {
+	Word     string            `json:"word"`
+	Index    int               `json:"index"`
+	Context  string            `json:"context"`
+	Policies map[string]string `json:"policies,omitempty"`
+}
+
+func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 	//
 	// Get keywords from file
 	//
@@ -56,7 +63,7 @@ func LoadKeywords(wordsFile string, filterPolicies []string) (*Keywords, error) 
 	}
 
 	//
-	// If provided filter policies did not match any keywords, report error
+	// If provided filter policies did not match any keywords, return error
 	//
 	if len(keywords) == 0 {
 		return nil, errors.Errorf("no keywords matched policy filter: %s", strings.Join(filterPolicies, ","))
