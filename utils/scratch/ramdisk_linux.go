@@ -3,6 +3,7 @@ package scratch
 import (
 	"os"
 	"os/exec"
+	"strconv"
 
 	"github.com/pkg/errors"
 )
@@ -20,7 +21,8 @@ func (s *Scratch) mount() error {
 		return errors.Wrapf(err, "error creating temporary directory for mount point")
 	}
 
-	output, err = exec.Command("mount", "-t", "tmpfs", "-o", "noatime,size="+s.ramdiskMegabytes+"m", r.mountPoint).CombinedOutput()
+	mb := strconv.Itoa(s.ramdiskMegabytes)
+	output, err = exec.Command("mount", "-t", "tmpfs", "-o", "noatime,size="+mb+"m", s.path).CombinedOutput()
 	if err != nil {
 		return errors.Wrapf(err, "error creating temporary directory for mount point:"+string(output))
 	}
