@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"flag"
-	"math/rand"
 	"strings"
 
 	"fmt"
@@ -42,6 +41,8 @@ func main() {
 
 	}
 	defer ss.Teardown()
+	// Now that we should have a Scratch TempDir, we can set the filescanner path
+	scanOpts.ScratchSpacePath = ss.ScratchSpacePath
 
 	//
 	// Setup context and signal handlers, which will be needed
@@ -109,11 +110,6 @@ func parseFlags() (*scratch.Opts, *filescanner.Opts, *FileOpts, error) {
 
 	flag.Parse()
 
-	if scratchOpts.Path == "" {
-		scratchOpts.Path = fmt.Sprintf("/tmp/goscan-%d", rand.Int())
-	}
-
-	scanOpts.ScratchSpacePath = scratchOpts.Path
 	if scanPolicies == "all" {
 		scanOpts.Policies = nil
 	} else {

@@ -9,6 +9,6 @@ import (
 )
 
 func parseScratchOpts(opts *scratch.Opts) {
-	flag.StringVar(&opts.Path, "scratch.dir", "", "Scratch directory for scan unarchiving")
+	flag.StringVar(&opts.BasePath, "scratch.basedir", "", "Scratch directory for scan unarchiving")
 	opts.RamdiskEnable = false
 }
