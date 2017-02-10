@@ -175,7 +175,7 @@ func run() error {
 						errChan <- ur.Error
 						return
 					}
-					hits, err := kw.MatchFile(ur.File)
+					hits, err := kw.MatchFile(ur.File, scanOpts.HitContext)
 					if err != nil {
 						errChan <- err
 						return

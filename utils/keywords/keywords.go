@@ -10,8 +10,10 @@ import (
 )
 
 type Keywords struct {
-	keywords   map[string]*Keyword
-	dictionary *ahocorasick.Machine
+	keywords map[string]*Keyword
+
+	longestWordLen int
+	dictionary     *ahocorasick.Machine
 }
 
 type Keyword struct {
@@ -73,18 +75,25 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 	// Create the Aho-Corasick dictionary for fast string matching
 	//
 	var keywordsBytes [][]byte
+	var longestWordLen int
 	for _, keyword := range keywords {
 		keywordsBytes = append(keywordsBytes, []byte(keyword.Word))
+		wordLen := len(keyword.Word)
+		if wordLen > longestWordLen {
+			longestWordLen = wordLen
+		}
 	}
 	dictionary := &ahocorasick.Machine{}
 	dictionary.Build(keywordsBytes)
 
 	return &Keywords{
-		keywords:   keywords,
-		dictionary: dictionary}, nil
+		keywords:       keywords,
+		dictionary:     dictionary,
+		longestWordLen: longestWordLen,
+	}, nil
 }
 
-func (k *Keywords) MatchFile(file string) ([]Hit, error) {
+func (k *Keywords) MatchFile(file string, hitContext int) ([]Hit, error) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		return nil, err
@@ -92,8 +101,8 @@ func (k *Keywords) MatchFile(file string) ([]Hit, error) {
 
 	hits := make([]Hit, 0)
 	for _, t := range k.dictionary.MultiPatternSearch(data, false) {
-		ctxBegin := t.Pos - 20
-		ctxEnd := t.Pos + len(t.Word) + 20
+		ctxBegin := t.Pos - hitContext
+		ctxEnd := t.Pos + len(t.Word) + hitContext
 		if ctxBegin < 0 {
 			ctxBegin = 0
 		}
