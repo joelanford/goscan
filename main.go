@@ -125,8 +125,8 @@ func run() error {
 	// Recursively unarchive the files to be scanned
 	//
 	var unarchiveWg sync.WaitGroup
-	unarchiveStarted := make(chan struct{})
 	unarchiveResults := make(chan archive.UnarchiveResult)
+	unarchiveWg.Add(len(scanOpts.InputFiles))
 	go func() {
 		for {
 			select {
@@ -137,8 +137,6 @@ func run() error {
 				if !ok {
 					return
 				}
-				unarchiveWg.Add(1)
-				close(unarchiveStarted)
 				go func() {
 					archive.UnarchiveRecursive(ctx, ifile, ".goscan-unar", unarchiveResults)
 					unarchiveWg.Done()
@@ -148,7 +146,6 @@ func run() error {
 	}()
 
 	go func() {
-		<-unarchiveStarted
 		unarchiveWg.Wait()
 		close(unarchiveResults)
 	}()
