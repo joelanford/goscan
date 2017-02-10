@@ -76,9 +76,14 @@ func run() error {
 	//
 	// Open the output file
 	//
-	output, err := os.Create(scanOpts.ResultsFile)
-	if err != nil {
-		return err
+	var output io.WriteCloser
+	if scanOpts.ResultsFile == "-" {
+		output = os.Stdout
+	} else {
+		output, err = os.Create(scanOpts.ResultsFile)
+		if err != nil {
+			return err
+		}
 	}
 	defer output.Close()
 	e := json.NewEncoder(output)
@@ -247,10 +252,6 @@ func parseFlags() (*scratch.Opts, *ScanOpts, error) {
 		scanOpts.Policies = nil
 	} else {
 		scanOpts.Policies = strings.Split(policies, ",")
-	}
-
-	if scanOpts.ResultsFile == "-" {
-		scanOpts.ResultsFile = "/dev/stdout"
 	}
 
 	if scanOpts.Parallelism < 1 {
