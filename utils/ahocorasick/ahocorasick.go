@@ -2,6 +2,9 @@ package ahocorasick
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"strconv"
 
 	"github.com/joelanford/goscan/utils/darts"
 )
@@ -16,8 +19,9 @@ type Machine struct {
 }
 
 type Term struct {
-	Pos  int
-	Word []byte
+	Pos     int
+	Word    []byte
+	Context []byte
 }
 
 func (m *Machine) Build(keywords [][]byte) (err error) {
@@ -105,7 +109,7 @@ func (m *Machine) setF(inState, outState int) {
 	m.failure[inState] = outState
 }
 
-func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](*Term) {
+func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediately bool) [](*Term) {
 	terms := make([](*Term), 0)
 
 	state := ROOT_STATE
@@ -121,6 +125,17 @@ func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](
 					term := new(Term)
 					term.Pos = pos - len(word) + 1
 					term.Word = word
+
+					contextBegin := term.Pos - context
+					contextEnd := term.Pos + len(word) + context
+					if contextBegin < 0 {
+						contextBegin = 0
+					}
+					if contextEnd > len(content) {
+						contextEnd = len(content)
+					}
+					term.Context = content[contextBegin:contextEnd]
+
 					terms = append(terms, term)
 					if returnImmediately {
 						return terms
@@ -131,6 +146,110 @@ func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](
 	}
 
 	return terms
+}
+
+func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmediately bool) ([]*Term, error) {
+	bufSize := 4096
+	if context > bufSize/2 {
+		return nil, errors.New("context cannot exceed " + strconv.Itoa(bufSize/2) + " bytes")
+	}
+	terms := make([](*Term), 0)
+
+	var err error
+	var prevEnd int
+	var currEnd int
+	var nextEnd int
+
+	var prevBuf []byte
+	currBuf := make([]byte, bufSize)
+	nextBuf := make([]byte, bufSize)
+
+	currEnd, err = r.Read(currBuf)
+	if err != nil {
+		if err == io.EOF {
+			return terms, nil
+		}
+		return nil, err
+	}
+	totalPos := 0
+
+	state := ROOT_STATE
+	for currBuf != nil {
+		nextEnd, err = r.Read(nextBuf)
+		if err != nil {
+			if err == io.EOF {
+				nextBuf = nil
+				nextEnd = 0
+			} else {
+				return nil, err
+			}
+		}
+
+		for pos, c := range currBuf {
+		start:
+			if m.g(state, c) == FAIL_STATE {
+				state = m.f(state)
+				goto start
+			} else {
+				state = m.g(state, c)
+				if val, ok := m.output[state]; ok != false {
+					for _, word := range val {
+						term := new(Term)
+						wordBegin := pos - len(word) + 1
+						wordEnd := wordBegin + len(word)
+						term.Pos = totalPos - len(word) + 1
+						term.Word = word
+
+						var contextBefore []byte
+						contextBegin := wordBegin - context
+						if contextBegin < 0 {
+							if prevBuf == nil {
+								contextBefore = currBuf[0:wordBegin]
+							} else if wordBegin < 0 {
+								contextBefore = prevBuf[prevEnd+contextBegin : prevEnd+wordBegin]
+							} else {
+								contextBefore = append(prevBuf[prevEnd+contextBegin:bufSize], currBuf[0:wordBegin]...)
+							}
+						} else {
+							contextBefore = currBuf[contextBegin:wordBegin]
+						}
+
+						var contextAfter []byte
+						contextEnd := wordEnd + context
+						if contextEnd > currEnd {
+							if nextBuf == nil {
+								fmt.Println(totalPos, pos, wordEnd, currEnd, len(currBuf))
+								contextAfter = currBuf[wordEnd:currEnd]
+							} else if contextEnd-currEnd > nextEnd {
+								contextAfter = append(currBuf[wordEnd:currEnd], nextBuf[0:nextEnd]...)
+							} else {
+								contextAfter = append(currBuf[wordEnd:currEnd], nextBuf[0:contextEnd-currEnd]...)
+							}
+						} else {
+							contextAfter = currBuf[wordEnd:contextEnd]
+						}
+						context := append(append(contextBefore, word...), contextAfter...)
+						term.Context = make([]byte, len(context))
+						copy(term.Context, context)
+
+						terms = append(terms, term)
+						if returnImmediately {
+							return terms, nil
+						}
+					}
+				}
+			}
+			totalPos++
+		}
+
+		prevBuf = currBuf[0:currEnd]
+		prevEnd = currEnd
+		currBuf = nextBuf[0:nextEnd]
+		currEnd = nextEnd
+		nextBuf = prevBuf[0:4096]
+
+	}
+	return terms, nil
 }
 
 func (m *Machine) ExactSearch(content []byte) [](*Term) {
