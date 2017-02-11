@@ -1,6 +1,9 @@
 # goscan
 
-`goscan` is a simple tool to find keywords in text, binary, and archive files. 
+[![Build Status](https://travis-ci.org/joelanford/goscan.svg?branch=master)](https://travis-ci.org/joelanford/goscan)
+[![Coverage Status](https://coveralls.io/repos/github/joelanford/goscan/badge.svg?branch=master)](https://coveralls.io/github/joelanford/goscan?branch=master)
+
+goscan is a simple tool to find keywords in text, binary, and archive files.
 
 It copies files to be scanned into a temporary scratch space and recursively walks
 directory trees to unarchive, decompress, and scan files with a configurable list 
