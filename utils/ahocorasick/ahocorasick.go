@@ -2,6 +2,10 @@ package ahocorasick
 
 import (
 	"errors"
+	"fmt"
+	"io"
+	"strconv"
+	"sync"
 
 	"github.com/joelanford/goscan/utils/darts"
 )
@@ -10,19 +14,30 @@ const FAIL_STATE = -1
 const ROOT_STATE = 1
 
 type Machine struct {
-	trie    *darts.DoubleArrayTrie
-	failure []int
-	output  map[int]([][]byte)
+	trie       *darts.DoubleArrayTrie
+	failure    []int
+	output     map[int]([][]byte)
+	longestLen int
 }
 
 type Term struct {
-	Pos  int
-	Word []byte
+	Pos     int
+	Word    []byte
+	Context []byte
 }
 
 func (m *Machine) Build(keywords [][]byte) (err error) {
 	if len(keywords) == 0 {
 		return errors.New("empty keywords")
+	}
+
+	for _, k := range keywords {
+		if len(k) > m.longestLen {
+			m.longestLen = len(k)
+			if m.longestLen > 4096 {
+				return errors.New("keywords longer than 4096 bytes not supported")
+			}
+		}
 	}
 
 	d := new(darts.Darts)
@@ -105,7 +120,7 @@ func (m *Machine) setF(inState, outState int) {
 	m.failure[inState] = outState
 }
 
-func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](*Term) {
+func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediately bool) [](*Term) {
 	terms := make([](*Term), 0)
 
 	state := ROOT_STATE
@@ -121,6 +136,17 @@ func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](
 					term := new(Term)
 					term.Pos = pos - len(word) + 1
 					term.Word = word
+
+					contextBegin := term.Pos - context
+					contextEnd := term.Pos + len(word) + context
+					if contextBegin < 0 {
+						contextBegin = 0
+					}
+					if contextEnd > len(content) {
+						contextEnd = len(content)
+					}
+					term.Context = content[contextBegin:contextEnd]
+
 					terms = append(terms, term)
 					if returnImmediately {
 						return terms
@@ -133,13 +159,169 @@ func (m *Machine) MultiPatternSearch(content []byte, returnImmediately bool) [](
 	return terms
 }
 
-func (m *Machine) ExactSearch(content []byte) [](*Term) {
-	if m.trie.ExactMatchSearch(content, 0) {
-		t := new(Term)
-		t.Word = content
-		t.Pos = 0
-		return [](*Term){t}
+func (m *Machine) MultiPatternSearchReadSeeker(f io.ReadSeeker, context int, returnImmediately bool) ([]*Term, error) {
+	errChan := make(chan error)
+	bufChan := make(chan []byte)
+	termsChan := make(chan *Term)
+
+	go func() {
+		defer close(bufChan)
+		for i := int64(0); true; i += 61440 {
+			_, err := f.Seek(i, 0)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			buf := make([]byte, 65536)
+			len, err := f.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				errChan <- err
+				return
+			}
+			bufChan <- buf[0:len]
+		}
+	}()
+
+	var searchWg sync.WaitGroup
+	searchWg.Add(4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			defer searchWg.Done()
+			for buf := range bufChan {
+				for _, term := range m.MultiPatternSearch(buf, context, returnImmediately) {
+					termsChan <- term
+				}
+			}
+		}()
 	}
 
-	return nil
+	go func() {
+		searchWg.Wait()
+		close(termsChan)
+	}()
+
+	termsMap := make(map[string]bool)
+	terms := make([]*Term, 0)
+	for {
+		select {
+		case err := <-errChan:
+			return terms, err
+		case term, ok := <-termsChan:
+			if !ok {
+				return terms, nil
+			}
+			key := fmt.Sprintf("%d:%s", term.Pos, string(term.Word))
+			if _, ok := termsMap[key]; !ok {
+				termsMap[key] = true
+				terms = append(terms, term)
+			}
+		}
+	}
+}
+
+func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmediately bool) ([]*Term, error) {
+	bufSize := 4096
+	maxContext := bufSize - m.longestLen + 1
+	if context > maxContext {
+		return nil, errors.New("context cannot exceed " + strconv.Itoa(maxContext) + " bytes")
+	}
+	terms := make([](*Term), 0)
+
+	var err error
+	var prevEnd int
+	var currEnd int
+	var nextEnd int
+
+	prevBuf := make([]byte, bufSize)
+	currBuf := make([]byte, bufSize)
+	nextBuf := make([]byte, bufSize)
+	tempBuf := make([]byte, bufSize)
+
+	currEnd, err = r.Read(currBuf)
+	if err != nil {
+		if err == io.EOF {
+			return terms, nil
+		}
+		return nil, err
+	}
+	totalPos := 0
+
+	state := ROOT_STATE
+	for currEnd != 0 {
+		nextEnd, err = r.Read(nextBuf)
+		if err != nil {
+			if err == io.EOF {
+				nextEnd = 0
+			} else {
+				return nil, err
+			}
+		}
+
+		for pos, c := range currBuf[0:currEnd] {
+		start:
+			if m.g(state, c) == FAIL_STATE {
+				state = m.f(state)
+				goto start
+			} else {
+				state = m.g(state, c)
+				if val, ok := m.output[state]; ok != false {
+					for _, word := range val {
+						term := new(Term)
+						wordBegin := pos - len(word) + 1
+						wordEnd := wordBegin + len(word)
+						term.Pos = totalPos - len(word) + 1
+						term.Word = word
+
+						var contextBefore []byte
+						contextBegin := wordBegin - context
+						if contextBegin < 0 {
+							if prevEnd == 0 {
+								contextBefore = currBuf[0:wordBegin]
+							} else if wordBegin < 0 {
+								contextBefore = prevBuf[prevEnd+contextBegin : prevEnd+wordBegin]
+							} else {
+								contextBefore = append(prevBuf[prevEnd+contextBegin:bufSize], currBuf[0:wordBegin]...)
+							}
+						} else {
+							contextBefore = currBuf[contextBegin:wordBegin]
+						}
+
+						var contextAfter []byte
+						contextEnd := wordEnd + context
+						if contextEnd > currEnd {
+							if nextEnd == 0 {
+								contextAfter = currBuf[wordEnd:currEnd]
+							} else if contextEnd-currEnd > nextEnd {
+								contextAfter = append(currBuf[wordEnd:currEnd], nextBuf[0:nextEnd]...)
+							} else {
+								contextAfter = append(currBuf[wordEnd:currEnd], nextBuf[0:contextEnd-currEnd]...)
+							}
+						} else {
+							contextAfter = currBuf[wordEnd:contextEnd]
+						}
+						context := append(append(contextBefore, word...), contextAfter...)
+						term.Context = make([]byte, len(context))
+						copy(term.Context, context)
+
+						terms = append(terms, term)
+						if returnImmediately {
+							return terms, nil
+						}
+					}
+				}
+			}
+			totalPos++
+		}
+
+		tempBuf = prevBuf
+		prevBuf = currBuf[0:currEnd]
+		prevEnd = currEnd
+		currBuf = nextBuf[0:nextEnd]
+		currEnd = nextEnd
+		nextBuf = tempBuf[0:4096]
+	}
+	return terms, nil
 }

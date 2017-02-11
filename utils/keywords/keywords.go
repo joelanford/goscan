@@ -2,6 +2,7 @@ package keywords
 
 import (
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/joelanford/goscan/utils/ahocorasick"
@@ -10,10 +11,8 @@ import (
 )
 
 type Keywords struct {
-	keywords map[string]*Keyword
-
-	longestWordLen int
-	dictionary     *ahocorasick.Machine
+	keywords   map[string]*Keyword
+	dictionary *ahocorasick.Machine
 }
 
 type Keyword struct {
@@ -75,46 +74,34 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 	// Create the Aho-Corasick dictionary for fast string matching
 	//
 	var keywordsBytes [][]byte
-	var longestWordLen int
 	for _, keyword := range keywords {
 		keywordsBytes = append(keywordsBytes, []byte(keyword.Word))
-		wordLen := len(keyword.Word)
-		if wordLen > longestWordLen {
-			longestWordLen = wordLen
-		}
 	}
 	dictionary := &ahocorasick.Machine{}
 	dictionary.Build(keywordsBytes)
 
 	return &Keywords{
-		keywords:       keywords,
-		dictionary:     dictionary,
-		longestWordLen: longestWordLen,
+		keywords:   keywords,
+		dictionary: dictionary,
 	}, nil
 }
 
 func (k *Keywords) MatchFile(file string, hitContext int) ([]Hit, error) {
-	data, err := ioutil.ReadFile(file)
+	f, err := os.Open(file)
 	if err != nil {
 		return nil, err
 	}
+	defer f.Close()
 
 	hits := make([]Hit, 0)
-	for _, t := range k.dictionary.MultiPatternSearch(data, false) {
-		ctxBegin := t.Pos - hitContext
-		ctxEnd := t.Pos + len(t.Word) + hitContext
-		if ctxBegin < 0 {
-			ctxBegin = 0
-		}
-		if ctxEnd > len(data) {
-			ctxEnd = len(data)
-		}
+	terms, err := k.dictionary.MultiPatternSearchReadSeeker(f, hitContext, false)
+	for _, t := range terms {
 		hits = append(hits, Hit{
 			Word:     string(t.Word),
 			Index:    t.Pos,
-			Context:  string(data[ctxBegin:ctxEnd]),
+			Context:  string(t.Context),
 			Policies: k.keywords[string(t.Word)].Policies,
 		})
 	}
-	return hits, nil
+	return hits, err
 }
