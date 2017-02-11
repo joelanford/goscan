@@ -41,16 +41,18 @@ By default, ramdisk scratch space is disabled. To enable it, set
 
 ```
 Usage: goscan [options] <scanfiles>
-  -output string
-    	Results output file ("-" for stdout) (default "-")
   -scan.context int
     	Context to capture around each hit (default 10)
+  -scan.output string
+    	Results output file ("-" for stdout) (default "-")
+  -scan.parallelism int
+    	Number of goroutines to use to scan files. (default 8)
   -scan.policies string
     	Comma-separated list of keyword policies (default "all")
   -scan.words string
     	YAML keywords file
-  -scratch.dir string
-    	Scratch directory for scan unarchiving
+  -scratch.basedir string
+    	Scratch directory for scan unarchiving (default "/var/folders/_n/0lbshv6s2kn0rjndq6t55tzm0000gn/T/")
   -scratch.ramdisk.enable
     	Enable ramdisk scratch directory
   -scratch.ramdisk.mb int
