@@ -103,10 +103,8 @@ func TestMultiPatternSearchReadSeekerContext(t *testing.T) {
 	assert.NoError(t, err)
 
 	terms, err = m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 4061, false)
-	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
-	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
-	assert.Equal(t, 4061*2+len(keywords[1]), len(terms[1].Context))
-	assert.NoError(t, err)
+	assert.Nil(t, terms)
+	assert.Error(t, err)
 }
 
 func TestMultiPatternSearchReader(t *testing.T) {

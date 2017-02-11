@@ -160,19 +160,25 @@ func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediat
 }
 
 func (m *Machine) MultiPatternSearchReadSeeker(f io.ReadSeeker, context int, returnImmediately bool) ([]*Term, error) {
+	bufSize := 4096
+	maxContext := bufSize - m.longestLen + 1
+	if context > maxContext {
+		return nil, errors.New("context cannot exceed " + strconv.Itoa(maxContext) + " bytes")
+	}
+
 	errChan := make(chan error)
 	bufChan := make(chan []byte)
 	termsChan := make(chan *Term)
 
 	go func() {
 		defer close(bufChan)
-		for i := int64(0); true; i += 61440 {
+		for i := int64(0); true; i += 1036288 {
 			_, err := f.Seek(i, 0)
 			if err != nil {
 				errChan <- err
 				return
 			}
-			buf := make([]byte, 65536)
+			buf := make([]byte, 1048576)
 			len, err := f.Read(buf)
 			if err != nil {
 				if err == io.EOF {
