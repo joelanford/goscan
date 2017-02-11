@@ -2,6 +2,7 @@ package keywords
 
 import (
 	"io/ioutil"
+	"os"
 	"strings"
 
 	"github.com/joelanford/goscan/utils/ahocorasick"
@@ -86,8 +87,14 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 }
 
 func (k *Keywords) MatchFile(file string, hitContext int) ([]Hit, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
 	hits := make([]Hit, 0)
-	terms, err := k.dictionary.MultiPatternSearchFile(file, hitContext, false)
+	terms, err := k.dictionary.MultiPatternSearchReadSeeker(f, hitContext, false)
 	for _, t := range terms {
 		hits = append(hits, Hit{
 			Word:     string(t.Word),

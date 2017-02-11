@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"sync"
 
@@ -160,29 +159,15 @@ func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediat
 	return terms
 }
 
-func (m *Machine) MultiPatternSearchFile(file string, context int, returnImmediately bool) ([]*Term, error) {
-	info, err := os.Stat(file)
-	if err != nil {
-		return nil, err
-	}
-	f, err := os.Open(file)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-
-	if info.Size() < 65536 {
-		return m.MultiPatternSearchReader(f, context, returnImmediately)
-	}
-
+func (m *Machine) MultiPatternSearchReadSeeker(f io.ReadSeeker, context int, returnImmediately bool) ([]*Term, error) {
 	errChan := make(chan error)
 	bufChan := make(chan []byte)
 	termsChan := make(chan *Term)
 
 	go func() {
 		defer close(bufChan)
-		for i := int64(0); i < info.Size(); i += 61440 {
-			_, err = f.Seek(i, 0)
+		for i := int64(0); true; i += 61440 {
+			_, err := f.Seek(i, 0)
 			if err != nil {
 				errChan <- err
 				return

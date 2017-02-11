@@ -5,10 +5,6 @@ import (
 
 	"bytes"
 
-	"io/ioutil"
-
-	"os"
-
 	"github.com/joelanford/goscan/utils/ahocorasick"
 	"github.com/stretchr/testify/assert"
 )
@@ -76,22 +72,12 @@ func TestMultiPatternSearchContext(t *testing.T) {
 	assert.Equal(t, 5000*2+len(keywords[1]), len(terms[1].Context))
 }
 
-func TestMultiPatternFile(t *testing.T) {
+func TestMultiPatternReadSeeker(t *testing.T) {
 	m := new(ahocorasick.Machine)
 	m.Build(keywords)
-	f, err := ioutil.TempFile("", "goscan.test.")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = f.Write([]byte(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-	f.Close()
-	terms, err := m.MultiPatternSearchFile(f.Name(), 10, false)
+	terms, err := m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 10, false)
 	assert.NoError(t, err)
 	assert.Equal(t, expectedTerms, terms)
-	os.Remove(f.Name())
 }
 
 func TestMultiPatternSearchReader(t *testing.T) {
