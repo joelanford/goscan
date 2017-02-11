@@ -80,6 +80,35 @@ func TestMultiPatternReadSeeker(t *testing.T) {
 	assert.Equal(t, expectedTerms, terms)
 }
 
+func TestMultiPatternSearchReadSeekerContext(t *testing.T) {
+	m := new(ahocorasick.Machine)
+	m.Build(keywords)
+
+	terms, err := m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 100, false)
+	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
+	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
+	assert.Equal(t, 100*2+len(keywords[1]), len(terms[1].Context))
+	assert.NoError(t, err)
+
+	terms, err = m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 2000, false)
+	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
+	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
+	assert.Equal(t, 2000*2+len(keywords[1]), len(terms[1].Context))
+	assert.NoError(t, err)
+
+	terms, err = m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 4060, false)
+	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
+	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
+	assert.Equal(t, 4060*2+len(keywords[1]), len(terms[1].Context))
+	assert.NoError(t, err)
+
+	terms, err = m.MultiPatternSearchReadSeeker(bytes.NewReader([]byte(data)), 4061, false)
+	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
+	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
+	assert.Equal(t, 4061*2+len(keywords[1]), len(terms[1].Context))
+	assert.NoError(t, err)
+}
+
 func TestMultiPatternSearchReader(t *testing.T) {
 	m := new(ahocorasick.Machine)
 	m.Build(keywords)
