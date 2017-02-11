@@ -1,9 +1,6 @@
 package ahocorasick
 
-import (
-	"fmt"
-	"io"
-)
+import "io"
 
 type Buffer struct {
 	r       io.Reader
@@ -35,11 +32,10 @@ func (b *Buffer) ReadByte() (byte, error) {
 	}
 	if b.readPos == b.bufSize*2 {
 		b.buf = append(append(b.buf[b.bufSize:b.bufSize*2], b.buf[b.bufSize*2:b.bufSize*3]...), b.buf[0:b.bufSize]...)
-		b.readPos -= 4
+		b.readPos -= b.bufSize
 
 		len, err = b.r.Read(b.buf[b.bufSize*2 : b.bufSize*3])
-		b.bufEnd = b.bufEnd - 4 + len
-		fmt.Println(b.buf, b.bufEnd)
+		b.bufEnd = b.bufEnd - b.bufSize + len
 	}
 	if b.readPos == b.bufEnd {
 		return 0, io.EOF
@@ -50,11 +46,11 @@ func (b *Buffer) ReadByte() (byte, error) {
 }
 
 func (b *Buffer) PeekBack(n int) []byte {
-	begin := b.readPos - n - 1
+	begin := b.readPos - n
 	if begin < 0 {
 		begin = 0
 	}
-	return b.buf[begin : b.readPos-1]
+	return b.buf[begin:b.readPos]
 }
 
 func (b *Buffer) PeekForward(n int) []byte {

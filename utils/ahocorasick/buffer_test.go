@@ -2,7 +2,6 @@ package ahocorasick_test
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"testing"
 
@@ -11,14 +10,13 @@ import (
 )
 
 func TestBuffer(t *testing.T) {
-	data := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}
-	buf := ahocorasick.NewBuffer(bytes.NewBuffer(data), 4)
+	data := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20}
+	buf := ahocorasick.NewBuffer(bytes.NewBuffer(data), 8)
 
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 21; i++ {
 		b, err := buf.ReadByte()
 		assert.NoError(t, err)
 		assert.Equal(t, byte(i), b)
-		fmt.Println(buf.PeekBack(2), b, buf.PeekForward(2))
 	}
 
 	b, err := buf.ReadByte()
@@ -34,7 +32,6 @@ func TestBufferOne(t *testing.T) {
 		b, err := buf.ReadByte()
 		assert.NoError(t, err)
 		assert.Equal(t, byte(i), b)
-		fmt.Println(buf.PeekBack(2), b, buf.PeekForward(2))
 	}
 
 	b, err := buf.ReadByte()

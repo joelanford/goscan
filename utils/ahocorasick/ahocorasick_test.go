@@ -1,7 +1,6 @@
 package ahocorasick_test
 
 import (
-	"fmt"
 	"testing"
 
 	"bytes"
@@ -98,7 +97,6 @@ func TestMultiPatternSearchReaderContext(t *testing.T) {
 	assert.NoError(t, err)
 
 	terms, err = m.MultiPatternSearchReader(bytes.NewBufferString(data), 4060, false)
-	fmt.Println(err)
 	assert.Equal(t, expectedTerms[1].Pos, terms[1].Pos)
 	assert.Equal(t, expectedTerms[1].Word, terms[1].Word)
 	assert.Equal(t, 4060*2+len(keywords[1]), len(terms[1].Context))
