@@ -52,7 +52,7 @@ Usage: goscan [options] <scanfiles>
   -scan.words string
     	YAML keywords file
   -scratch.basedir string
-    	Scratch directory for scan unarchiving (default "/var/folders/_n/0lbshv6s2kn0rjndq6t55tzm0000gn/T/")
+    	Scratch directory for scan unarchiving (default "/tmp/")
   -scratch.ramdisk.enable
     	Enable ramdisk scratch directory
   -scratch.ramdisk.mb int
