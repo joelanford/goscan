@@ -2,7 +2,6 @@ package ahocorasick
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"strconv"
 
@@ -13,9 +12,10 @@ const FAIL_STATE = -1
 const ROOT_STATE = 1
 
 type Machine struct {
-	trie    *darts.DoubleArrayTrie
-	failure []int
-	output  map[int]([][]byte)
+	trie       *darts.DoubleArrayTrie
+	failure    []int
+	output     map[int]([][]byte)
+	longestLen int
 }
 
 type Term struct {
@@ -27,6 +27,12 @@ type Term struct {
 func (m *Machine) Build(keywords [][]byte) (err error) {
 	if len(keywords) == 0 {
 		return errors.New("empty keywords")
+	}
+
+	for _, k := range keywords {
+		if len(k) > m.longestLen {
+			m.longestLen = len(k)
+		}
 	}
 
 	d := new(darts.Darts)
@@ -150,8 +156,9 @@ func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediat
 
 func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmediately bool) ([]*Term, error) {
 	bufSize := 4096
-	if context > bufSize/2 {
-		return nil, errors.New("context cannot exceed " + strconv.Itoa(bufSize/2) + " bytes")
+	maxContext := bufSize - m.longestLen + 1
+	if context > maxContext {
+		return nil, errors.New("context cannot exceed " + strconv.Itoa(maxContext) + " bytes")
 	}
 	terms := make([](*Term), 0)
 
@@ -160,9 +167,10 @@ func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmed
 	var currEnd int
 	var nextEnd int
 
-	var prevBuf []byte
+	prevBuf := make([]byte, bufSize)
 	currBuf := make([]byte, bufSize)
 	nextBuf := make([]byte, bufSize)
+	tempBuf := make([]byte, bufSize)
 
 	currEnd, err = r.Read(currBuf)
 	if err != nil {
@@ -174,18 +182,17 @@ func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmed
 	totalPos := 0
 
 	state := ROOT_STATE
-	for currBuf != nil {
+	for currEnd != 0 {
 		nextEnd, err = r.Read(nextBuf)
 		if err != nil {
 			if err == io.EOF {
-				nextBuf = nil
 				nextEnd = 0
 			} else {
 				return nil, err
 			}
 		}
 
-		for pos, c := range currBuf {
+		for pos, c := range currBuf[0:currEnd] {
 		start:
 			if m.g(state, c) == FAIL_STATE {
 				state = m.f(state)
@@ -203,7 +210,7 @@ func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmed
 						var contextBefore []byte
 						contextBegin := wordBegin - context
 						if contextBegin < 0 {
-							if prevBuf == nil {
+							if prevEnd == 0 {
 								contextBefore = currBuf[0:wordBegin]
 							} else if wordBegin < 0 {
 								contextBefore = prevBuf[prevEnd+contextBegin : prevEnd+wordBegin]
@@ -217,8 +224,7 @@ func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmed
 						var contextAfter []byte
 						contextEnd := wordEnd + context
 						if contextEnd > currEnd {
-							if nextBuf == nil {
-								fmt.Println(totalPos, pos, wordEnd, currEnd, len(currBuf))
+							if nextEnd == 0 {
 								contextAfter = currBuf[wordEnd:currEnd]
 							} else if contextEnd-currEnd > nextEnd {
 								contextAfter = append(currBuf[wordEnd:currEnd], nextBuf[0:nextEnd]...)
@@ -242,23 +248,12 @@ func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmed
 			totalPos++
 		}
 
+		tempBuf = prevBuf
 		prevBuf = currBuf[0:currEnd]
 		prevEnd = currEnd
 		currBuf = nextBuf[0:nextEnd]
 		currEnd = nextEnd
-		nextBuf = prevBuf[0:4096]
-
+		nextBuf = tempBuf[0:4096]
 	}
 	return terms, nil
-}
-
-func (m *Machine) ExactSearch(content []byte) [](*Term) {
-	if m.trie.ExactMatchSearch(content, 0) {
-		t := new(Term)
-		t.Word = content
-		t.Pos = 0
-		return [](*Term){t}
-	}
-
-	return nil
 }
