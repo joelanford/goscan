@@ -2,8 +2,11 @@ package ahocorasick
 
 import (
 	"errors"
+	"fmt"
 	"io"
+	"os"
 	"strconv"
+	"sync"
 
 	"github.com/joelanford/goscan/utils/darts"
 )
@@ -32,6 +35,9 @@ func (m *Machine) Build(keywords [][]byte) (err error) {
 	for _, k := range keywords {
 		if len(k) > m.longestLen {
 			m.longestLen = len(k)
+			if m.longestLen > 4096 {
+				return errors.New("keywords longer than 4096 bytes not supported")
+			}
 		}
 	}
 
@@ -152,6 +158,83 @@ func (m *Machine) MultiPatternSearch(content []byte, context int, returnImmediat
 	}
 
 	return terms
+}
+
+func (m *Machine) MultiPatternSearchFile(file string, context int, returnImmediately bool) ([]*Term, error) {
+	info, err := os.Stat(file)
+	if err != nil {
+		return nil, err
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	if info.Size() < 65536 {
+		return m.MultiPatternSearchReader(f, context, returnImmediately)
+	}
+
+	errChan := make(chan error)
+	bufChan := make(chan []byte)
+	termsChan := make(chan *Term)
+
+	go func() {
+		defer close(bufChan)
+		for i := int64(0); i < info.Size(); i += 61440 {
+			_, err = f.Seek(i, 0)
+			if err != nil {
+				errChan <- err
+				return
+			}
+			buf := make([]byte, 65536)
+			len, err := f.Read(buf)
+			if err != nil {
+				if err == io.EOF {
+					return
+				}
+				errChan <- err
+				return
+			}
+			bufChan <- buf[0:len]
+		}
+	}()
+
+	var searchWg sync.WaitGroup
+	searchWg.Add(4)
+	for i := 0; i < 4; i++ {
+		go func() {
+			defer searchWg.Done()
+			for buf := range bufChan {
+				for _, term := range m.MultiPatternSearch(buf, context, returnImmediately) {
+					termsChan <- term
+				}
+			}
+		}()
+	}
+
+	go func() {
+		searchWg.Wait()
+		close(termsChan)
+	}()
+
+	termsMap := make(map[string]bool)
+	terms := make([]*Term, 0)
+	for {
+		select {
+		case err := <-errChan:
+			return terms, err
+		case term, ok := <-termsChan:
+			if !ok {
+				return terms, nil
+			}
+			key := fmt.Sprintf("%d:%s", term.Pos, string(term.Word))
+			if _, ok := termsMap[key]; !ok {
+				termsMap[key] = true
+				terms = append(terms, term)
+			}
+		}
+	}
 }
 
 func (m *Machine) MultiPatternSearchReader(r io.Reader, context int, returnImmediately bool) ([]*Term, error) {
