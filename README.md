@@ -46,6 +46,8 @@ By default, ramdisk scratch space is disabled. To enable it, set
 Usage: goscan [options] <scanfiles>
   -scan.context int
     	Context to capture around each hit (default 10)
+  -scan.hitsonly
+    	Only output results containing hits
   -scan.output string
     	Results output file ("-" for stdout) (default "-")
   -scan.parallelism int

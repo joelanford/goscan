@@ -27,6 +27,7 @@ type ScanOpts struct {
 	KeywordsFile string
 	Policies     []string
 	HitContext   int
+	HitsOnly     bool
 	ResultsFile  string
 	Parallelism  int
 }
@@ -207,9 +208,11 @@ func run() error {
 			if !ok {
 				return nil
 			}
-			err = e.Encode(sr)
-			if err != nil {
-				return err
+			if !scanOpts.HitsOnly || len(sr.Hits) > 0 {
+				err = e.Encode(sr)
+				if err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -228,9 +231,10 @@ func parseFlags() (*scratch.Opts, *ScanOpts, error) {
 	configureScratchOpts(&scratchOpts)
 	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
 	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
+	flag.BoolVar(&scanOpts.HitsOnly, "scan.hitsonly", false, "Only output results containing hits")
 	flag.StringVar(&policies, "scan.policies", "all", "Comma-separated list of keyword policies")
 	flag.StringVar(&scanOpts.ResultsFile, "scan.output", "-", "Results output file (\"-\" for stdout)")
-	flag.IntVar(&scanOpts.Parallelism, "scan.parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files.")
+	flag.IntVar(&scanOpts.Parallelism, "scan.parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
 
 	flag.Parse()
 
