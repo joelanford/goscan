@@ -117,7 +117,19 @@ func run() error {
 				errChan <- ctx.Err()
 				return
 			default:
-				ofile := path.Join(ss.ScratchSpacePath, path.Base(ifile))
+				ifiledir := path.Dir(ifile)
+				var ofiledir string
+				if path.IsAbs(ifiledir) {
+					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, ifiledir))
+				} else {
+					cwd, err := os.Getwd()
+					if err != nil {
+						errChan <- ctx.Err()
+						return
+					}
+					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, cwd, ifiledir))
+				}
+				ofile := path.Join(ofiledir, path.Base(ifile))
 				if err := copyToScratchSpace(ifile, ofile); err != nil {
 					errChan <- err
 					return
@@ -184,7 +196,7 @@ func run() error {
 						return
 					}
 					scanResults <- ScanResult{
-						File: strings.Replace(strings.Replace(ur.File, ss.ScratchSpacePath+"/", "", -1), ".goscan-unar", "", -1),
+						File: strings.Replace(strings.Replace(ur.File, ss.ScratchSpacePath, "", -1), ".goscan-unar", "", -1),
 						Hits: hits,
 					}
 				}
@@ -274,6 +286,10 @@ func copyToScratchSpace(ifilename, ofilename string) error {
 		return err
 	}
 	defer ifile.Close()
+	err = os.MkdirAll(path.Dir(ofilename), 0777)
+	if err != nil {
+		return err
+	}
 	ofile, err := os.Create(ofilename)
 	if err != nil {
 		return err
