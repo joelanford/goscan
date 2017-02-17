@@ -14,4 +14,4 @@ install:
   - go env
 
 build_script:
-  - for /f "" %G in ('go list ./... ^| find /i /v "/vendor/"') do @go test %G
+  - for /f "" %%G in ('go list ./... ^| find /i /v "/vendor/"') do @go test %%G
