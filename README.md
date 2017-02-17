@@ -1,6 +1,7 @@
 # goscan
 
-[![Build Status](https://travis-ci.org/joelanford/goscan.svg?branch=master)](https://travis-ci.org/joelanford/goscan)
+[![TravisCI Build Status](https://travis-ci.org/joelanford/goscan.svg?branch=master)](https://travis-ci.org/joelanford/goscan)
+[![Appveyor Build status](https://ci.appveyor.com/api/projects/status/0gqcc4fkn9dg9lm8/branch/master?svg=true)](https://ci.appveyor.com/project/joelanford/goscan/branch/master)
 [![Coverage Status](https://coveralls.io/repos/github/joelanford/goscan/badge.svg?branch=master)](https://coveralls.io/github/joelanford/goscan?branch=master)
 
 goscan is a simple tool to find keywords in text, binary, and archive files.

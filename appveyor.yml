@@ -1,0 +1,17 @@
+version: "{build}"
+
+os: Windows Server 2012 R2
+
+clone_folder: c:\gopath\src\github.com\joelanford\goscan
+
+environment:
+  GOPATH: c:\gopath
+
+install:
+  - echo %PATH%
+  - echo %GOPATH%
+  - go version
+  - go env
+
+build_script:
+  - for /f "" %%G in ('go list ./... ^| find /i /v "/vendor/"') do @go test %%G
