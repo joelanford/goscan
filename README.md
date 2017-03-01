@@ -41,6 +41,12 @@ By default, ramdisk scratch space is disabled. To enable it, set
 
 `brew install unar`
 
+#### Windows
+
+Download and install from here: [http://unarchiver.c3.cx/downloads/unar1.8.1_win.zip](http://unarchiver.c3.cx/downloads/unar1.8.1_win.zip)
+
+NOTE: You must extract all of the files in the zip into a location on your path.
+
 ## Usage
 
 ```
