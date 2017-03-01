@@ -120,15 +120,16 @@ func run() error {
 				ifiledir := path.Dir(ifile)
 				var ofiledir string
 				if path.IsAbs(ifiledir) {
-					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, ifiledir))
+					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, strings.Replace(ifiledir, ":", "_", -1)))
 				} else {
 					cwd, err := os.Getwd()
 					if err != nil {
 						errChan <- ctx.Err()
 						return
 					}
-					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, cwd, ifiledir))
+					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, strings.Replace(cwd, ":", "_", -1), ifiledir))
 				}
+				fmt.Println(ofiledir)
 				ofile := path.Join(ofiledir, path.Base(ifile))
 				if err := copyToScratchSpace(ifile, ofile); err != nil {
 					errChan <- err
