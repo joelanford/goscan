@@ -129,7 +129,6 @@ func run() error {
 					}
 					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, strings.Replace(cwd, ":", "_", -1), ifiledir))
 				}
-				fmt.Println(ofiledir)
 				ofile := path.Join(ofiledir, path.Base(ifile))
 				if err := copyToScratchSpace(ifile, ofile); err != nil {
 					errChan <- err
