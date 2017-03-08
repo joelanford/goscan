@@ -24,7 +24,7 @@ func Run() error {
 	//
 	// Parse command line flags
 	//
-	scratchOpts, scanOpts, err := parseFlags()
+	scanOpts, err := parseFlags()
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func Run() error {
 	//
 	// Prepare the scratch space
 	//
-	ss := scratch.New(*scratchOpts)
+	ss := scratch.New(scanOpts.BaseDir, scanOpts.RamdiskEnable, scanOpts.RamdiskSize)
 	err = ss.Setup()
 	if err != nil {
 		return err
@@ -96,14 +96,14 @@ func Run() error {
 				ifiledir := path.Dir(ifile)
 				var ofiledir string
 				if path.IsAbs(ifiledir) {
-					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, strings.Replace(ifiledir, ":", "_", -1)))
+					ofiledir = path.Clean(path.Join(ss.Dir(), strings.Replace(ifiledir, ":", "_", -1)))
 				} else {
 					cwd, err := os.Getwd()
 					if err != nil {
 						errChan <- ctx.Err()
 						return
 					}
-					ofiledir = path.Clean(path.Join(ss.ScratchSpacePath, strings.Replace(cwd, ":", "_", -1), ifiledir))
+					ofiledir = path.Clean(path.Join(ss.Dir(), strings.Replace(cwd, ":", "_", -1), ifiledir))
 				}
 				ofile := path.Join(ofiledir, path.Base(ifile))
 				if err := copyToScratchSpace(ifile, ofile); err != nil {
@@ -172,7 +172,7 @@ func Run() error {
 						return
 					}
 					scanResults <- ScanResult{
-						File: strings.Replace(strings.Replace(ur.File, ss.ScratchSpacePath, "", -1), ".goscan-unar", "", -1),
+						File: strings.Replace(strings.Replace(ur.File, ss.Dir(), "", -1), ".goscan-unar", "", -1),
 						Hits: hits,
 					}
 				}
@@ -206,38 +206,38 @@ func Run() error {
 	}
 }
 
-func parseFlags() (*scratch.Opts, *ScanOpts, error) {
+func parseFlags() (*ScanOpts, error) {
 	flag.Usage = func() {
 		fmt.Printf("Usage: goscan [options] <scanfiles>\n")
 		flag.PrintDefaults()
 	}
 
-	var scratchOpts scratch.Opts
 	var policies string
 	var scanOpts ScanOpts
 
-	configureScratchOpts(&scratchOpts)
-	flag.StringVar(&scanOpts.KeywordsFile, "scan.words", "", "YAML keywords file")
-	flag.IntVar(&scanOpts.HitContext, "scan.context", 10, "Context to capture around each hit")
-	flag.BoolVar(&scanOpts.HitsOnly, "scan.hitsonly", false, "Only output results containing hits")
-	flag.StringVar(&policies, "scan.policies", "all", "Comma-separated list of keyword policies")
-	flag.StringVar(&scanOpts.ResultsFile, "scan.output", "-", "Results output file (\"-\" for stdout)")
-	flag.IntVar(&scanOpts.Parallelism, "scan.parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
+	flag.StringVar(&scanOpts.BaseDir, "basedir", os.TempDir(), "Scratch directory for scan unarchiving")
+	flag.StringVar(&scanOpts.KeywordsFile, "words", "", "YAML keywords file")
+	flag.IntVar(&scanOpts.HitContext, "context", 10, "Context to capture around each hit")
+	flag.BoolVar(&scanOpts.HitsOnly, "hitsonly", false, "Only output results containing hits")
+	flag.StringVar(&policies, "policies", "all", "Comma-separated list of keyword policies")
+	flag.StringVar(&scanOpts.ResultsFile, "output", "-", "Results output file (\"-\" for stdout)")
+	flag.IntVar(&scanOpts.Parallelism, "parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
+	configureRamdiskOpts(&scanOpts)
 
 	flag.Parse()
 
 	scanOpts.InputFiles = flag.Args()
 
-	if scratchOpts.RamdiskEnable && scratchOpts.RamdiskMegabytes < 0 {
-		return nil, nil, errors.New("error: scratch.ramdisk.mb must be positive")
+	if scanOpts.RamdiskEnable && scanOpts.RamdiskSize < 0 {
+		return nil, errors.New("error: ramdisk.size must be positive")
 	}
 
 	if scanOpts.KeywordsFile == "" {
-		return nil, nil, errors.New("error: scan.words file must be defined")
+		return nil, errors.New("error: scan.words file must be defined")
 	}
 
 	if scanOpts.HitContext < 0 {
-		return nil, nil, errors.New("error: scan.context must not be negative")
+		return nil, errors.New("error: scan.context must not be negative")
 	}
 
 	if policies == "all" {
@@ -247,13 +247,13 @@ func parseFlags() (*scratch.Opts, *ScanOpts, error) {
 	}
 
 	if scanOpts.Parallelism < 1 {
-		return nil, nil, errors.New("error: scan.parallelism must be positive")
+		return nil, errors.New("error: scan.parallelism must be positive")
 	}
 
 	if len(scanOpts.InputFiles) == 0 {
-		return nil, nil, errors.New("error: must define at least one file to scan")
+		return nil, errors.New("error: must define at least one file to scan")
 	}
-	return &scratchOpts, &scanOpts, nil
+	return &scanOpts, nil
 }
 
 func copyToScratchSpace(ifilename, ofilename string) error {

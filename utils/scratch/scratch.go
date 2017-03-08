@@ -3,36 +3,35 @@ package scratch
 import (
 	"os"
 
-	"github.com/pkg/errors"
 	"io/ioutil"
+
+	"github.com/pkg/errors"
 )
 
-type Opts struct {
-	BasePath         string
-	RamdiskEnable    bool
-	RamdiskMegabytes int
-}
-
 type Scratch struct {
-	ScratchSpacePath string
-	basePath         string
-	ramdiskMegabytes int
-	ramdiskEnable    bool
+	scratchDir    string
+	baseDir       string
+	ramdiskSize   int
+	ramdiskEnable bool
 
 	device string
 }
 
-func New(opts Opts) *Scratch {
+func New(baseDir string, enable bool, size int) *Scratch {
 	return &Scratch{
-		basePath:         opts.BasePath,
-		ramdiskEnable:    opts.RamdiskEnable,
-		ramdiskMegabytes: opts.RamdiskMegabytes,
+		baseDir:       baseDir,
+		ramdiskEnable: enable,
+		ramdiskSize:   size,
 	}
+}
+
+func (s *Scratch) Dir() string {
+	return s.scratchDir
 }
 
 func (s *Scratch) Setup() error {
 	var err error
-	s.ScratchSpacePath, err = ioutil.TempDir(s.basePath, "goscan")
+	s.scratchDir, err = ioutil.TempDir(s.baseDir, "goscan")
 	if err != nil {
 		return err
 	}
@@ -56,9 +55,10 @@ func (s *Scratch) Teardown() error {
 			return errors.Wrap(err, "error unmounting ramdisk")
 		}
 	}
-	err := os.RemoveAll(s.ScratchSpacePath)
+	err := os.RemoveAll(s.scratchDir)
 	if err != nil {
 		return errors.Wrap(err, "error deleting temporary directory")
 	}
+	s.scratchDir = ""
 	return nil
 }

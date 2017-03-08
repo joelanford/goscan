@@ -3,6 +3,7 @@ package app
 import "github.com/joelanford/goscan/utils/keywords"
 
 type ScanOpts struct {
+	BaseDir      string
 	InputFiles   []string
 	KeywordsFile string
 	Policies     []string
@@ -10,6 +11,9 @@ type ScanOpts struct {
 	HitsOnly     bool
 	ResultsFile  string
 	Parallelism  int
+
+	RamdiskEnable bool
+	RamdiskSize   int
 }
 
 type ScanResult struct {

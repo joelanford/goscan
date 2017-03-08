@@ -15,7 +15,7 @@ func (s *Scratch) mount() error {
 	var output []byte
 	var err error
 
-	mb := strconv.Itoa(s.ramdiskMegabytes)
+	mb := strconv.Itoa(s.ramdiskSize)
 	output, err = exec.Command("mount", "-t", "tmpfs", "-o", "noatime,size="+mb+"m", s.ScratchSpacePath).CombinedOutput()
 
 	if err != nil {
