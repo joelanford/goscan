@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -14,38 +13,67 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/joelanford/goscan/utils/archive"
 	"github.com/joelanford/goscan/utils/keywords"
+	"github.com/joelanford/goscan/utils/output"
 	"github.com/joelanford/goscan/utils/scratch"
 )
+
+type Opts struct {
+	BaseDir       string
+	InputFiles    []string
+	KeywordsFile  string
+	Policies      []string
+	HitContext    int
+	HitsOnly      bool
+	ResultsFile   string
+	ResultsFormat string
+	Parallelism   int
+
+	RamdiskEnable bool
+	RamdiskSize   int
+}
 
 func Run() error {
 	//
 	// Parse command line flags
 	//
-	scanOpts, err := parseFlags()
+	opts, err := parseFlags()
 	if err != nil {
 		return err
 	}
 
 	//
+	// Setup output formatter
+	//
+	var w output.SummaryWriter
+	switch opts.ResultsFormat {
+	case "json":
+		w = output.NewJSONSummaryWriter(os.Stdout, "", "  ")
+	case "yaml":
+		w = output.NewYAMLSummaryWriter(os.Stdout)
+	default:
+		return errors.New("invalid results format")
+	}
+
+	sum := output.ScanSummary{
+		InputFiles: opts.InputFiles,
+		Results:    make([]output.ScanResult, 0),
+	}
+	start := time.Now()
+
+	//
 	// Setup context and signal handlers, which will be needed
 	// if we need to cleanly exit before completing the scan.
 	//
-	ctx, cancel := context.WithCancel(context.Background())
-	sigChan := make(chan os.Signal)
-	signal.Notify(sigChan, syscall.SIGABRT, syscall.SIGINT, syscall.SIGKILL)
-	go func() {
-		sig := <-sigChan
-		fmt.Fprintf(os.Stderr, "Received signal %s. Exiting", sig)
-		cancel()
-	}()
+	ctx := setupSignalCancellationContext()
 
 	//
 	// Setup the keyword matcher
 	//
-	kw, err := keywords.Load(scanOpts.KeywordsFile, scanOpts.Policies)
+	kw, err := keywords.Load(opts.KeywordsFile, opts.Policies)
 	if err != nil {
 		return err
 	}
@@ -53,22 +81,21 @@ func Run() error {
 	//
 	// Open the output file
 	//
-	var output io.WriteCloser
-	if scanOpts.ResultsFile == "-" {
-		output = os.Stdout
+	var outputFile io.WriteCloser
+	if opts.ResultsFile == "-" {
+		outputFile = os.Stdout
 	} else {
-		output, err = os.Create(scanOpts.ResultsFile)
+		outputFile, err = os.Create(opts.ResultsFile)
 		if err != nil {
 			return err
 		}
 	}
-	defer output.Close()
-	e := json.NewEncoder(output)
+	defer outputFile.Close()
 
 	//
 	// Prepare the scratch space
 	//
-	ss := scratch.New(scanOpts.BaseDir, scanOpts.RamdiskEnable, scanOpts.RamdiskSize)
+	ss := scratch.New(opts.BaseDir, opts.RamdiskEnable, opts.RamdiskSize)
 	err = ss.Setup()
 	if err != nil {
 		return err
@@ -87,7 +114,7 @@ func Run() error {
 	ifiles := make(chan string)
 	go func() {
 		defer close(ifiles)
-		for _, ifile := range scanOpts.InputFiles {
+		for _, ifile := range opts.InputFiles {
 			select {
 			case <-ctx.Done():
 				errChan <- ctx.Err()
@@ -120,7 +147,7 @@ func Run() error {
 	//
 	var unarchiveWg sync.WaitGroup
 	unarchiveResults := make(chan archive.UnarchiveResult)
-	unarchiveWg.Add(len(scanOpts.InputFiles))
+	unarchiveWg.Add(len(opts.InputFiles))
 	go func() {
 		for {
 			select {
@@ -148,9 +175,9 @@ func Run() error {
 	// Scan unarchived files for hits
 	//
 	var scanWg sync.WaitGroup
-	scanResults := make(chan ScanResult)
-	scanWg.Add(scanOpts.Parallelism)
-	for i := 0; i < scanOpts.Parallelism; i++ {
+	scanResults := make(chan output.ScanResult)
+	scanWg.Add(opts.Parallelism)
+	for i := 0; i < opts.Parallelism; i++ {
 		go func() {
 			defer scanWg.Done()
 			for {
@@ -166,15 +193,21 @@ func Run() error {
 						errChan <- ur.Error
 						return
 					}
-					hits, err := kw.MatchFile(ur.File, scanOpts.HitContext)
+					hits, err := kw.MatchFile(ur.File, opts.HitContext)
 					if err != nil {
 						errChan <- err
 						return
 					}
-					scanResults <- ScanResult{
+					scanResults <- output.ScanResult{
 						File: strings.Replace(strings.Replace(ur.File, ss.Dir(), "", -1), ".goscan-unar", "", -1),
 						Hits: hits,
 					}
+
+					sum.Stats.FilesScanned++
+					if len(hits) <= 0 {
+						sum.Stats.FilesHit++
+					}
+
 				}
 			}
 		}()
@@ -194,66 +227,79 @@ func Run() error {
 			return err
 		case sr, ok := <-scanResults:
 			if !ok {
+				sum.Stats.Duration = time.Now().Sub(start).Seconds()
+
+				w.WriteSummary(sum)
 				return nil
 			}
-			if !scanOpts.HitsOnly || len(sr.Hits) > 0 {
-				err = e.Encode(sr)
-				if err != nil {
-					return err
-				}
+			if !opts.HitsOnly || len(sr.Hits) > 0 {
+				sum.Results = append(sum.Results, sr)
 			}
 		}
 	}
 }
 
-func parseFlags() (*ScanOpts, error) {
+func parseFlags() (*Opts, error) {
 	flag.Usage = func() {
 		fmt.Printf("Usage: goscan [options] <scanfiles>\n")
 		flag.PrintDefaults()
 	}
 
 	var policies string
-	var scanOpts ScanOpts
+	var opts Opts
 
-	flag.StringVar(&scanOpts.BaseDir, "basedir", os.TempDir(), "Scratch directory for scan unarchiving")
-	flag.StringVar(&scanOpts.KeywordsFile, "words", "", "YAML keywords file")
-	flag.IntVar(&scanOpts.HitContext, "context", 10, "Context to capture around each hit")
-	flag.BoolVar(&scanOpts.HitsOnly, "hitsonly", false, "Only output results containing hits")
+	flag.StringVar(&opts.BaseDir, "basedir", os.TempDir(), "Scratch directory for scan unarchiving")
+	flag.StringVar(&opts.KeywordsFile, "words", "", "YAML keywords file")
+	flag.IntVar(&opts.HitContext, "context", 10, "Context to capture around each hit")
+	flag.BoolVar(&opts.HitsOnly, "hitsonly", false, "Only output results containing hits")
 	flag.StringVar(&policies, "policies", "all", "Comma-separated list of keyword policies")
-	flag.StringVar(&scanOpts.ResultsFile, "output", "-", "Results output file (\"-\" for stdout)")
-	flag.IntVar(&scanOpts.Parallelism, "parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
-	configureRamdiskOpts(&scanOpts)
+	flag.StringVar(&opts.ResultsFile, "outputFile", "-", "Results output file (\"-\" for stdout)")
+	flag.StringVar(&opts.ResultsFormat, "outputFormat", "json", "Results output format")
+	flag.IntVar(&opts.Parallelism, "parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
+	configureRamdiskOpts(&opts)
 
 	flag.Parse()
 
-	scanOpts.InputFiles = flag.Args()
+	opts.InputFiles = flag.Args()
 
-	if scanOpts.RamdiskEnable && scanOpts.RamdiskSize < 0 {
+	if opts.RamdiskEnable && opts.RamdiskSize < 0 {
 		return nil, errors.New("error: ramdisk.size must be positive")
 	}
 
-	if scanOpts.KeywordsFile == "" {
+	if opts.KeywordsFile == "" {
 		return nil, errors.New("error: scan.words file must be defined")
 	}
 
-	if scanOpts.HitContext < 0 {
+	if opts.HitContext < 0 {
 		return nil, errors.New("error: scan.context must not be negative")
 	}
 
 	if policies == "all" {
-		scanOpts.Policies = nil
+		opts.Policies = nil
 	} else {
-		scanOpts.Policies = strings.Split(policies, ",")
+		opts.Policies = strings.Split(policies, ",")
 	}
 
-	if scanOpts.Parallelism < 1 {
+	if opts.Parallelism < 1 {
 		return nil, errors.New("error: scan.parallelism must be positive")
 	}
 
-	if len(scanOpts.InputFiles) == 0 {
+	if len(opts.InputFiles) == 0 {
 		return nil, errors.New("error: must define at least one file to scan")
 	}
-	return &scanOpts, nil
+	return &opts, nil
+}
+
+func setupSignalCancellationContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	sigChan := make(chan os.Signal)
+	signal.Notify(sigChan, syscall.SIGABRT, syscall.SIGINT, syscall.SIGKILL)
+	go func() {
+		sig := <-sigChan
+		fmt.Fprintf(os.Stderr, "Received signal %s. Exiting", sig)
+		cancel()
+	}()
+	return ctx
 }
 
 func copyToScratchSpace(ifilename, ofilename string) error {

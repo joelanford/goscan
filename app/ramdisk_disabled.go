@@ -2,7 +2,7 @@
 
 package app
 
-func configureRamdiskOpts(opts *ScanOpts) {
+func configureRamdiskOpts(opts *Opts) {
 	opts.RamdiskEnable = false
 	opts.RamdiskSize = 0
 }
