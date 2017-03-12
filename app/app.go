@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"os/signal"
-	"path"
 	"runtime"
 	"strings"
 	"sync"
@@ -120,20 +119,8 @@ func Run() error {
 				errChan <- ctx.Err()
 				return
 			default:
-				ifiledir := path.Dir(ifile)
-				var ofiledir string
-				if path.IsAbs(ifiledir) {
-					ofiledir = path.Clean(path.Join(ss.Dir(), strings.Replace(ifiledir, ":", "_", -1)))
-				} else {
-					cwd, err := os.Getwd()
-					if err != nil {
-						errChan <- ctx.Err()
-						return
-					}
-					ofiledir = path.Clean(path.Join(ss.Dir(), strings.Replace(cwd, ":", "_", -1), ifiledir))
-				}
-				ofile := path.Join(ofiledir, path.Base(ifile))
-				if err := copyToScratchSpace(ifile, ofile); err != nil {
+				ofile, err := ss.CopyFile(ifile)
+				if err != nil {
 					errChan <- err
 					return
 				}
@@ -300,25 +287,4 @@ func setupSignalCancellationContext() context.Context {
 		cancel()
 	}()
 	return ctx
-}
-
-func copyToScratchSpace(ifilename, ofilename string) error {
-	ifile, err := os.Open(ifilename)
-	if err != nil {
-		return err
-	}
-	defer ifile.Close()
-	err = os.MkdirAll(path.Dir(ofilename), 0777)
-	if err != nil {
-		return err
-	}
-	ofile, err := os.Create(ofilename)
-	if err != nil {
-		return err
-	}
-	defer ofile.Close()
-	if _, err := io.Copy(ofile, ifile); err != nil {
-		return err
-	}
-	return nil
 }
