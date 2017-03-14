@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -10,19 +9,19 @@ import (
 	"os/signal"
 	"runtime"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
-	"github.com/joelanford/goscan/utils/archive"
+	"github.com/joelanford/goscan/app/goscan"
 	"github.com/joelanford/goscan/utils/keywords"
 	"github.com/joelanford/goscan/utils/output"
 	"github.com/joelanford/goscan/utils/scratch"
+	"github.com/pkg/errors"
 )
 
 type Opts struct {
 	BaseDir       string
-	InputFiles    []string
+	InputFile     string
 	KeywordsFile  string
 	Policies      []string
 	HitContext    int
@@ -41,7 +40,7 @@ func Run() error {
 	//
 	opts, err := parseFlags()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "error parsing flags")
 	}
 
 	//
@@ -58,8 +57,8 @@ func Run() error {
 	}
 
 	sum := output.ScanSummary{
-		InputFiles: opts.InputFiles,
-		Results:    make([]output.ScanResult, 0),
+		InputFile: opts.InputFile,
+		Results:   make([]output.ScanResult, 0),
 	}
 	start := time.Now()
 
@@ -74,7 +73,7 @@ func Run() error {
 	//
 	kw, err := keywords.Load(opts.KeywordsFile, opts.Policies)
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "error loading keywords")
 	}
 
 	//
@@ -86,7 +85,7 @@ func Run() error {
 	} else {
 		outputFile, err = os.Create(opts.ResultsFile)
 		if err != nil {
-			return err
+			return errors.Wrapf(err, "error opening output file")
 		}
 	}
 	defer outputFile.Close()
@@ -97,113 +96,29 @@ func Run() error {
 	ss := scratch.New(opts.BaseDir, opts.RamdiskEnable, opts.RamdiskSize)
 	err = ss.Setup()
 	if err != nil {
-		return err
+		return errors.Wrapf(err, "scratch setup failed")
 	}
 	defer ss.Teardown()
 
 	//
-	// errChan used for the following goroutines to be able to return an error
-	// and shortcircuit the rest of the processing.
+	// Copy input file into scratch space
 	//
-	errChan := make(chan error)
-
-	//
-	// Copy the files to be scanned into the scratch space
-	//
-	ifiles := make(chan string)
-	go func() {
-		defer close(ifiles)
-		for _, ifile := range opts.InputFiles {
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			default:
-				ofile, err := ss.CopyFile(ifile)
-				if err != nil {
-					errChan <- err
-					return
-				}
-				ifiles <- ofile
-			}
-		}
-	}()
-
-	//
-	// Recursively unarchive the files to be scanned
-	//
-	var unarchiveWg sync.WaitGroup
-	unarchiveResults := make(chan archive.UnarchiveResult)
-	unarchiveWg.Add(len(opts.InputFiles))
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				errChan <- ctx.Err()
-				return
-			case ifile, ok := <-ifiles:
-				if !ok {
-					return
-				}
-				go func() {
-					archive.UnarchiveRecursive(ctx, ifile, ".goscan-unar", unarchiveResults)
-					unarchiveWg.Done()
-				}()
-			}
-		}
-	}()
-
-	go func() {
-		unarchiveWg.Wait()
-		close(unarchiveResults)
-	}()
-
-	//
-	// Scan unarchived files for hits
-	//
-	var scanWg sync.WaitGroup
-	scanResults := make(chan output.ScanResult)
-	scanWg.Add(opts.Parallelism)
-	for i := 0; i < opts.Parallelism; i++ {
-		go func() {
-			defer scanWg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					errChan <- ctx.Err()
-					return
-				case ur, ok := <-unarchiveResults:
-					if !ok {
-						return
-					}
-					if ur.Error != nil {
-						errChan <- ur.Error
-						return
-					}
-					hits, err := kw.MatchFile(ur.File, opts.HitContext)
-					if err != nil {
-						errChan <- err
-						return
-					}
-					scanResults <- output.ScanResult{
-						File: strings.Replace(strings.Replace(ur.File, ss.Dir(), "", -1), ".goscan-unar", "", -1),
-						Hits: hits,
-					}
-
-					sum.Stats.FilesScanned++
-					if len(hits) <= 0 {
-						sum.Stats.FilesHit++
-					}
-
-				}
-			}
-		}()
+	ofile, err := ss.CopyFile(opts.InputFile)
+	if err != nil {
+		return errors.Wrapf(err, "scratch file copy failed")
 	}
 
-	go func() {
-		scanWg.Wait()
-		close(scanResults)
-	}()
+	scanResults := make(chan output.ScanResult)
+	errChan := make(chan error)
+	scanner, err := goscan.NewScanner(kw, opts.Policies, goscan.BaseDir(opts.BaseDir), goscan.HitContext(opts.HitContext), goscan.HitsOnly(opts.HitsOnly), goscan.Parallelism(opts.Parallelism))
+	if err != nil {
+		return errors.Wrapf(err, "failed to initialize scanner")
+	}
+
+	err = scanner.ScanFile(ctx, ofile, scanResults, errChan)
+	if err != nil {
+		return errors.Wrapf(err, "failed scanning file %s", opts.InputFile)
+	}
 
 	//
 	// Loop until error or all hits have been found
@@ -211,16 +126,18 @@ func Run() error {
 	for {
 		select {
 		case err = <-errChan:
-			return err
+			return errors.Wrapf(err, "error scanning file")
 		case sr, ok := <-scanResults:
 			if !ok {
 				sum.Stats.Duration = time.Now().Sub(start).Seconds()
-
 				w.WriteSummary(sum)
 				return nil
 			}
+			sum.Stats.FilesScanned++
 			if !opts.HitsOnly || len(sr.Hits) > 0 {
 				sum.Results = append(sum.Results, sr)
+				sum.Stats.FilesHit++
+				sum.Stats.TotalHits += len(sr.Hits)
 			}
 		}
 	}
@@ -247,18 +164,16 @@ func parseFlags() (*Opts, error) {
 
 	flag.Parse()
 
-	opts.InputFiles = flag.Args()
-
 	if opts.RamdiskEnable && opts.RamdiskSize < 0 {
-		return nil, errors.New("error: ramdisk.size must be positive")
+		return nil, errors.New("ramdisk.size must be > 0")
 	}
 
 	if opts.KeywordsFile == "" {
-		return nil, errors.New("error: scan.words file must be defined")
+		return nil, errors.New("words file must be defined")
 	}
 
 	if opts.HitContext < 0 {
-		return nil, errors.New("error: scan.context must not be negative")
+		return nil, errors.New("context must not be >= 0")
 	}
 
 	if policies == "all" {
@@ -268,11 +183,13 @@ func parseFlags() (*Opts, error) {
 	}
 
 	if opts.Parallelism < 1 {
-		return nil, errors.New("error: scan.parallelism must be positive")
+		return nil, errors.New("parallelism must be > 0")
 	}
 
-	if len(opts.InputFiles) == 0 {
-		return nil, errors.New("error: must define at least one file to scan")
+	if len(flag.Args()) != 1 {
+		return nil, errors.New("must define exactly one file to scan")
+	} else {
+		opts.InputFile = flag.Arg(0)
 	}
 	return &opts, nil
 }

@@ -3,9 +3,9 @@ package output
 import "github.com/joelanford/goscan/utils/keywords"
 
 type ScanSummary struct {
-	InputFiles []string     `json:"inputFiles" yaml:"inputFiles"`
-	Results    []ScanResult `json:"results" yaml:"results"`
-	Stats      ScanStats    `json:"stats" yaml:"stats"`
+	InputFile string       `json:"inputFile" yaml:"inputFile"`
+	Results   []ScanResult `json:"results" yaml:"results"`
+	Stats     ScanStats    `json:"stats" yaml:"stats"`
 }
 
 type ScanResult struct {
