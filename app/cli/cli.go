@@ -78,19 +78,24 @@ func Run(opts *app.Opts) error {
 	//
 	// Copy input file into scratch space
 	//
-	ofile, err := ss.CopyFile(opts.InputFile)
+	ifile, err := ss.CopyFile(opts.InputFile)
 	if err != nil {
 		return errors.Wrapf(err, "scratch file copy failed")
 	}
 
 	scanResults := make(chan output.ScanResult)
 	errChan := make(chan error)
-	scanner, err := goscan.NewScanner(kw, opts.Policies, goscan.BaseDir(opts.BaseDir), goscan.HitContext(opts.HitContext), goscan.HitsOnly(opts.HitsOnly), goscan.Parallelism(opts.Parallelism))
+	scanner, err := goscan.NewScanner(kw,
+		goscan.BaseDir(opts.BaseDir),
+		goscan.HitContext(opts.HitContext),
+		goscan.HitsOnly(opts.HitsOnly),
+		goscan.Parallelism(opts.Parallelism),
+	)
 	if err != nil {
 		return errors.Wrapf(err, "failed to initialize scanner")
 	}
 
-	err = scanner.ScanFile(ctx, ofile, scanResults, errChan)
+	err = scanner.ScanFile(ctx, ifile, scanResults, errChan)
 	if err != nil {
 		return errors.Wrapf(err, "failed scanning file %s", opts.InputFile)
 	}
