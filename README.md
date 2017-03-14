@@ -51,22 +51,24 @@ NOTE: You must extract all of the files in the zip into a location on your path.
 
 ```
 Usage: goscan [options] <scanfiles>
-  -scan.context int
-    	Context to capture around each hit (default 10)
-  -scan.hitsonly
-    	Only output results containing hits
-  -scan.output string
-    	Results output file ("-" for stdout) (default "-")
-  -scan.parallelism int
-    	Number of goroutines to use to scan files. (default 8)
-  -scan.policies string
-    	Comma-separated list of keyword policies (default "all")
-  -scan.words string
-    	YAML keywords file
-  -scratch.basedir string
+  -basedir string
     	Scratch directory for scan unarchiving (default "/tmp/")
-  -scratch.ramdisk.enable
+  -context int
+    	Context to capture around each hit (default 10)
+  -hitsonly
+    	Only output results containing hits
+  -output.file string
+    	Results output file ("-" for stdout) (default "-")
+  -output.format string
+    	Results output format (default "json")
+  -parallelism int
+    	Number of goroutines to use to scan files (default 8)
+  -policies string
+    	Comma-separated list of keyword policies (default "all")
+  -ramdisk.enable
     	Enable ramdisk scratch directory
-  -scratch.ramdisk.mb int
-    	Size of ramdisk to use as scratch space (default 4096)
+  -ramdisk.size int
+    	Size of ramdisk (in MB) to use as scratch space (default 4096)
+  -words string
+    	YAML keywords file
 ```

@@ -240,8 +240,8 @@ func parseFlags() (*Opts, error) {
 	flag.IntVar(&opts.HitContext, "context", 10, "Context to capture around each hit")
 	flag.BoolVar(&opts.HitsOnly, "hitsonly", false, "Only output results containing hits")
 	flag.StringVar(&policies, "policies", "all", "Comma-separated list of keyword policies")
-	flag.StringVar(&opts.ResultsFile, "outputFile", "-", "Results output file (\"-\" for stdout)")
-	flag.StringVar(&opts.ResultsFormat, "outputFormat", "json", "Results output format")
+	flag.StringVar(&opts.ResultsFile, "output.file", "-", "Results output file (\"-\" for stdout)")
+	flag.StringVar(&opts.ResultsFormat, "output.format", "json", "Results output format")
 	flag.IntVar(&opts.Parallelism, "parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
 	configureRamdiskOpts(&opts)
 
