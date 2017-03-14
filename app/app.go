@@ -29,9 +29,6 @@ type Opts struct {
 	ResultsFile   string
 	ResultsFormat string
 	Parallelism   int
-
-	RamdiskEnable bool
-	RamdiskSize   int
 }
 
 func Run() error {
@@ -93,7 +90,7 @@ func Run() error {
 	//
 	// Prepare the scratch space
 	//
-	ss := scratch.New(opts.BaseDir, opts.RamdiskEnable, opts.RamdiskSize)
+	ss := scratch.New(opts.BaseDir)
 	err = ss.Setup()
 	if err != nil {
 		return errors.Wrapf(err, "scratch setup failed")
@@ -160,13 +157,8 @@ func parseFlags() (*Opts, error) {
 	flag.StringVar(&opts.ResultsFile, "output.file", "-", "Results output file (\"-\" for stdout)")
 	flag.StringVar(&opts.ResultsFormat, "output.format", "json", "Results output format")
 	flag.IntVar(&opts.Parallelism, "parallelism", runtime.NumCPU(), "Number of goroutines to use to scan files")
-	configureRamdiskOpts(&opts)
 
 	flag.Parse()
-
-	if opts.RamdiskEnable && opts.RamdiskSize < 0 {
-		return nil, errors.New("ramdisk.size must be > 0")
-	}
 
 	if opts.KeywordsFile == "" {
 		return nil, errors.New("words file must be defined")

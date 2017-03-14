@@ -12,19 +12,13 @@ import (
 )
 
 type Scratch struct {
-	scratchDir    string
-	baseDir       string
-	ramdiskSize   int
-	ramdiskEnable bool
-
-	device string
+	scratchDir string
+	baseDir    string
 }
 
-func New(baseDir string, enable bool, size int) *Scratch {
+func New(baseDir string) *Scratch {
 	return &Scratch{
-		baseDir:       baseDir,
-		ramdiskEnable: enable,
-		ramdiskSize:   size,
+		baseDir: baseDir,
 	}
 }
 
@@ -37,16 +31,6 @@ func (s *Scratch) Setup() error {
 	s.scratchDir, err = ioutil.TempDir(s.baseDir, "goscan")
 	if err != nil {
 		return err
-	}
-	if s.ramdiskEnable {
-		err := s.attach()
-		if err != nil {
-			return errors.Wrap(err, "error attaching ramdisk")
-		}
-		err = s.mount()
-		if err != nil {
-			return errors.Wrap(err, "error mounting ramdisk")
-		}
 	}
 	return nil
 }
@@ -86,12 +70,6 @@ func (s *Scratch) CopyFile(ifilename string) (string, error) {
 }
 
 func (s *Scratch) Teardown() error {
-	if s.ramdiskEnable {
-		err := s.detach()
-		if err != nil {
-			return errors.Wrap(err, "error unmounting ramdisk")
-		}
-	}
 	err := os.RemoveAll(s.scratchDir)
 	if err != nil {
 		return errors.Wrap(err, "error deleting temporary directory")
