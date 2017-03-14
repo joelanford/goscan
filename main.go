@@ -5,10 +5,16 @@ import (
 	"os"
 
 	"github.com/joelanford/goscan/app"
+	"github.com/joelanford/goscan/app/cli"
 )
 
 func main() {
-	if err := app.Run(); err != nil {
+	opts, err := app.ParseFlags()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+	if err := cli.Run(opts); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
