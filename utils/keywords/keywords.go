@@ -1,8 +1,10 @@
 package keywords
 
 import (
+	"io"
 	"io/ioutil"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/joelanford/goscan/utils/ahocorasick"
@@ -27,19 +29,19 @@ type Hit struct {
 	Policies map[string]string `json:"policies,omitempty"`
 }
 
-func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
+func LoadReader(r io.Reader, policies []string) (*Keywords, error) {
 	//
 	// Get keywords from file
 	//
-	data, err := ioutil.ReadFile(wordsFile)
+	data, err := ioutil.ReadAll(r)
 	if err != nil {
-		return nil, errors.Wrap(err, "error reading keywords file")
+		return nil, errors.Wrap(err, "error reading keywords")
 	}
 
 	var keywordList []*Keyword
 	err = yaml.Unmarshal(data, &keywordList)
 	if err != nil {
-		return nil, errors.Wrap(err, "error parsing keywords file")
+		return nil, errors.Wrap(err, "error parsing keywords")
 	}
 
 	//
@@ -47,13 +49,13 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 	//
 	keywords := make(map[string]*Keyword)
 	for _, keyword := range keywordList {
-		if filterPolicies == nil {
+		if policies == nil {
 			keywords[keyword.Word] = keyword
 		} else {
 			kwPolicies := make(map[string]string)
-			for _, filterPolicy := range filterPolicies {
-				if p, ok := keyword.Policies[filterPolicy]; ok {
-					kwPolicies[filterPolicy] = p
+			for _, policy := range policies {
+				if p, ok := keyword.Policies[policy]; ok {
+					kwPolicies[policy] = p
 				}
 			}
 			if len(kwPolicies) > 0 || keyword.Policies == nil || len(keyword.Policies) == 0 {
@@ -67,7 +69,7 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 	// If provided filter policies did not match any keywords, return error
 	//
 	if len(keywords) == 0 {
-		return nil, errors.Errorf("no keywords matched policy filter: %s", strings.Join(filterPolicies, ","))
+		return nil, errors.Errorf("no keywords matched policy filter: %s", strings.Join(policies, ","))
 	}
 
 	//
@@ -84,6 +86,26 @@ func Load(wordsFile string, filterPolicies []string) (*Keywords, error) {
 		keywords:   keywords,
 		dictionary: dictionary,
 	}, nil
+}
+
+func LoadFile(wordsFile string, policies []string) (*Keywords, error) {
+	r, err := os.Open(wordsFile)
+	if err != nil {
+		return nil, errors.Wrapf(err, "error opening keyword file %s", wordsFile)
+	}
+	defer r.Close()
+	return LoadReader(r, policies)
+}
+
+func (k *Keywords) Keywords() []Keyword {
+	kwSlice := []Keyword{}
+	for _, v := range k.keywords {
+		kwSlice = append(kwSlice, *v)
+	}
+	sort.Slice(kwSlice, func(i, j int) bool {
+		return kwSlice[i].Word < kwSlice[j].Word
+	})
+	return kwSlice
 }
 
 func (k *Keywords) MatchFile(file string, hitContext int) ([]Hit, error) {

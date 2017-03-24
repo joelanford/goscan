@@ -35,8 +35,8 @@ func (s *Scratch) Setup() error {
 	return nil
 }
 
-func (s *Scratch) CopyFile(ifilename string) (string, error) {
-	ifiledir := path.Dir(ifilename)
+func (s *Scratch) CopyReader(r io.Reader, name string) (string, error) {
+	ifiledir := path.Dir(name)
 	var ofiledir string
 	if path.IsAbs(ifiledir) {
 		ofiledir = path.Clean(path.Join(s.Dir(), strings.Replace(ifiledir, ":", "_", -1)))
@@ -47,14 +47,9 @@ func (s *Scratch) CopyFile(ifilename string) (string, error) {
 		}
 		ofiledir = path.Clean(path.Join(s.Dir(), strings.Replace(cwd, ":", "_", -1), ifiledir))
 	}
-	ofilename := path.Join(ofiledir, path.Base(ifilename))
+	ofilename := path.Join(ofiledir, path.Base(name))
 
-	ifile, err := os.Open(ifilename)
-	if err != nil {
-		return "", err
-	}
-	defer ifile.Close()
-	err = os.MkdirAll(path.Dir(ofilename), 0777)
+	err := os.MkdirAll(path.Dir(ofilename), 0777)
 	if err != nil {
 		return "", err
 	}
@@ -63,10 +58,19 @@ func (s *Scratch) CopyFile(ifilename string) (string, error) {
 		return "", err
 	}
 	defer ofile.Close()
-	if _, err := io.Copy(ofile, ifile); err != nil {
+	if _, err := io.Copy(ofile, r); err != nil {
 		return "", err
 	}
 	return ofilename, nil
+}
+
+func (s *Scratch) CopyFile(ifilename string) (string, error) {
+	r, err := os.Open(ifilename)
+	if err != nil {
+		return "", err
+	}
+	defer r.Close()
+	return s.CopyReader(r, ifilename)
 }
 
 func (s *Scratch) Teardown() error {
