@@ -105,7 +105,7 @@ func Run(opts *Opts) error {
 	//
 	// Setup the keyword matcher
 	//
-	kw, err := keywords.Load(opts.KeywordsFile, opts.Policies)
+	kw, err := keywords.LoadFile(opts.KeywordsFile, opts.Policies)
 	if err != nil {
 		return errors.Wrapf(err, "error loading keywords")
 	}
